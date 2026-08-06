@@ -124,7 +124,8 @@ def highlight_signals(row):
     elif score > 0: color = '#A7F3D0'
     else: color = '#FFFFFF'
         
-    return [f'color: {color}; font-weight: bold'] * len(row)
+    # 【關鍵修正】：加上 background-color: #0f172a，強制將表格儲存格背景鎖定為深色
+    return [f'background-color: #0f172a; color: {color}; font-weight: bold'] * len(row)
 
 # ==========================================
 # 3. 初始化 Session State 與本機快取恢復
