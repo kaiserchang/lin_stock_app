@@ -83,22 +83,30 @@ def get_formatted_signal(score, signal, above_ma60):
         return "➖ 無明顯型態"
 
 # ==========================================
-# 2. 注入自訂 CSS 
+# 2. 注入自訂 CSS
 # ==========================================
 custom_css = """
 <style>
-    .stApp { background-color: #0B1120; color: #FFFFFF; }
-    h1, h2, h3 { color: #FB923C !important; font-weight: bold !important; }
-    h1 { font-size: 2.2rem !important; }
-    section[data-testid="stSidebar"] { background-color: #0f172a; }
-    [data-testid="stElementToolbar"] {
-        transform: scale(1.85);
-        transform-origin: right top;
-        margin-top: -18px !important;
-        padding-bottom: 5px;
-        z-index: 9999;
-    }
-    [data-testid="stElementToolbar"] button { margin-left: 5px; }
+.stApp {
+    background-color: #0B1120;
+    color: #FFFFFF;
+}
+h1, h2, h3 {
+    color: #FB923C !important;
+    font-weight: bold !important;
+}
+h1 {
+    font-size: 2.2rem !important;
+}
+section[data-testid="stSidebar"] {
+    background-color: #0f172a;
+}
+
+/* 【新增修正】強制鎖定 DataFrame 與表格底色為深色，防止手機淺色模式變成白底白字 */
+div[data-testid="stDataFrame"], div[data-testid="stTable"], table {
+    background-color: #0f172a !important;
+    color: #FFFFFF !important;
+}
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
