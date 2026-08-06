@@ -110,7 +110,7 @@ section[data-testid="stSidebar"] * {
     color: #FFFFFF !important;
 }
 
-/* 2. 【關鍵修正】修正 Expander 折疊面板：包含外框、標題列 (summary) 與內容區 (details) 全面強制深底白字 */
+/* 2. 修正 Expander 折疊面板：包含外框、標題列 (summary) 與內容區 (details) 全面強制深底白字 */
 div[data-testid="stExpander"], 
 div[data-testid="stExpander"] details, 
 div[data-testid="stExpander"] summary {
@@ -118,8 +118,6 @@ div[data-testid="stExpander"] summary {
     color: #FFFFFF !important;
     border-color: #1e293b !important;
 }
-
-/* 強制 Expander 內部所有子元素 (包含圖示、文字) 為白色 */
 div[data-testid="stExpander"] * {
     color: #FFFFFF !important;
 }
@@ -128,6 +126,28 @@ div[data-testid="stExpander"] * {
 div[data-testid="stDataFrame"], div[data-testid="stTable"], table {
     background-color: #0f172a !important;
     color: #FFFFFF !important;
+}
+
+/* 4. 【關鍵修正】修正 st.button：強制醒目橘色背景與白色文字，徹底解決手機端按鈕反白問題 */
+div[data-testid="stButton"] > button,
+section[data-testid="stSidebar"] div[data-testid="stButton"] > button {
+    background-color: #EA580C !important; /* 亮橘色背景 */
+    color: #FFFFFF !important;            /* 白色粗體文字 */
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: bold !important;
+}
+
+/* 手指按壓、懸停與焦點狀態強制鎖定深橘色 */
+div[data-testid="stButton"] > button:hover,
+div[data-testid="stButton"] > button:focus,
+div[data-testid="stButton"] > button:active,
+section[data-testid="stSidebar"] div[data-testid="stButton"] > button:hover,
+section[data-testid="stSidebar"] div[data-testid="stButton"] > button:focus,
+section[data-testid="stSidebar"] div[data-testid="stButton"] > button:active {
+    background-color: #C2410C !important; /* 按下時轉為深橘色 */
+    color: #FFFFFF !important;
+    box-shadow: none !important;
 }
 </style>
 """
