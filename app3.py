@@ -110,11 +110,16 @@ section[data-testid="stSidebar"] * {
     color: #FFFFFF !important;
 }
 
-/* 2. 修正 Expander 折疊面板：強制深色背景與白色文字 */
-div[data-testid="stExpander"] {
+/* 2. 【關鍵修正】修正 Expander 折疊面板：包含外框、標題列 (summary) 與內容區 (details) 全面強制深底白字 */
+div[data-testid="stExpander"], 
+div[data-testid="stExpander"] details, 
+div[data-testid="stExpander"] summary {
     background-color: #0f172a !important;
-    border: 1px solid #1e293b !important;
+    color: #FFFFFF !important;
+    border-color: #1e293b !important;
 }
+
+/* 強制 Expander 內部所有子元素 (包含圖示、文字) 為白色 */
 div[data-testid="stExpander"] * {
     color: #FFFFFF !important;
 }
