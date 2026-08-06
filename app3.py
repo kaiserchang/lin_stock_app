@@ -128,7 +128,7 @@ div[data-testid="stDataFrame"], div[data-testid="stTable"], table {
     color: #FFFFFF !important;
 }
 
-/* 4. 【關鍵修正】修正 st.button：強制醒目橘色背景與白色文字，徹底解決手機端按鈕反白問題 */
+/* 4. 修正 st.button：強制醒目橘色背景與白色文字，徹底解決手機端按鈕反白問題 */
 div[data-testid="stButton"] > button,
 section[data-testid="stSidebar"] div[data-testid="stButton"] > button {
     background-color: #EA580C !important; /* 亮橘色背景 */
@@ -148,6 +148,11 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] > button:active {
     background-color: #C2410C !important; /* 按下時轉為深橘色 */
     color: #FFFFFF !important;
     box-shadow: none !important;
+}
+
+/* 5. 【關鍵修正】強制Dataframe內部的Checkbox文字標籤為白色 */
+div[data-testid="stDataFrame"] div[class*="StyledTableCellLabel"] {
+    color: #FFFFFF !important;
 }
 </style>
 """
