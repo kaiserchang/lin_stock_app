@@ -23,7 +23,6 @@ cache_mode_*.csv
 cache_mode_*_meta.json
 *_buy.csv
 *_sell.csv
-all_stocks.csv
 
 # =========================
 # 4. 使用者個人設定檔
