@@ -87,22 +87,39 @@ def get_formatted_signal(score, signal, above_ma60):
 # ==========================================
 custom_css = """
 <style>
+/* 全域底色與文字 */
 .stApp {
     background-color: #0B1120;
-    color: #FFFFFF;
+    color: #FFFFFF !important;
 }
-h1, h2, h3 {
+
+/* 標題顏色 */
+h1, h2, h3, h4, h5, h6 {
     color: #FB923C !important;
     font-weight: bold !important;
 }
 h1 {
     font-size: 2.2rem !important;
 }
+
+/* 1. 修正側邊欄：強制背景為深色，且內部所有標籤、選項文字強制為白色 */
 section[data-testid="stSidebar"] {
-    background-color: #0f172a;
+    background-color: #0f172a !important;
+}
+section[data-testid="stSidebar"] * {
+    color: #FFFFFF !important;
 }
 
-/* 【新增修正】強制鎖定 DataFrame 與表格底色為深色，防止手機淺色模式變成白底白字 */
+/* 2. 修正 Expander 折疊面板：強制深色背景與白色文字 */
+div[data-testid="stExpander"] {
+    background-color: #0f172a !important;
+    border: 1px solid #1e293b !important;
+}
+div[data-testid="stExpander"] * {
+    color: #FFFFFF !important;
+}
+
+/* 3. 強制表格與數據框底色與文字 */
 div[data-testid="stDataFrame"], div[data-testid="stTable"], table {
     background-color: #0f172a !important;
     color: #FFFFFF !important;
