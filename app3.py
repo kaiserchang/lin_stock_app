@@ -366,7 +366,7 @@ if analyze_btn:
                         '季線(MA60)': latest['MA60'],
                         '最新形態': formatted_signal,
                         '推薦分數': score,
-                        '季線之上': above_ma60
+                        '季線之上': "✅" if above_ma60 else "❌"
                     }
                     
                     if scan_mode.startswith("模式 A") or scan_mode.startswith("模式 D"):
