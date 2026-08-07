@@ -330,11 +330,11 @@ if analyze_btn:
         fetcher = TaiwanStockDataFetcher()
         
         # ==========================================
-        # 溫和型多執行緒處理 (限定 3 個 Worker)
+        # 溫和型多執行緒處理 (限定 5 個 Worker)
         # ==========================================
         def process_single_stock(stock_id):
-            # 加入 0.2 ~ 0.5 秒隨機微幅延遲，打散併發封包避免被 WAF 封鎖
-            time.sleep(random.uniform(0.2, 0.5))
+            # 加入 0.3 ~ 0.7 秒隨機微幅延遲，打散併發封包避免被 WAF 封鎖
+            time.sleep(random.uniform(0.3, 0.7))
             stock_name = dynamic_name_mapping.get(stock_id, "")
             try:
                 df = fetcher.get_stock_daily_data(stock_id, start_date_str, end_date_str)
@@ -361,11 +361,11 @@ if analyze_btn:
                 pass
             return None
 
-        # 使用 3 個 Worker 平行抓取
+        # 使用 5 個 Worker 平行抓取
         total_stocks = len(target_stocks)
         completed_count = 0
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(process_single_stock, sid) for sid in target_stocks]
             for future in as_completed(futures):
                 res = future.result()
