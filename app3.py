@@ -309,7 +309,7 @@ with st.sidebar:
     analyze_btn = st.button("🚀 開始批次掃描", width="stretch")
 
 # ==========================================
-# 5. 批次運算與持久化儲存核心
+# 5. 批次運算與持久化儲存核心 (動態模式版)
 # ==========================================
 if analyze_btn:
     if not target_stocks:
@@ -317,23 +317,12 @@ if analyze_btn:
     else:
         target_stocks = list(dict.fromkeys([str(x).strip() for x in target_stocks if str(x).strip() and str(x) != 'nan']))
         
-        mode_a_results = [] 
-        buy_signals = []
-        sell_signals = []
-        
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
         scan_date_str = datetime.today().strftime('%Y-%m-%d %H:%M')
         end_date_str = datetime.today().strftime('%Y-%m-%d')
         start_date_str = (datetime.today() - timedelta(days=120)).strftime('%Y-%m-%d')
         fetcher = TaiwanStockDataFetcher()
-        
-        # ==========================================
-        # 溫和型多執行緒處理 (限定 5 個 Worker)
-        # ==========================================
+
         def process_single_stock(stock_id):
-            # 加入 0.3 ~ 0.7 秒隨機延遲，打散併發封包
             time.sleep(random.uniform(0.3, 0.7))
             stock_name = dynamic_name_mapping.get(stock_id, "")
             try:
@@ -357,48 +346,65 @@ if analyze_btn:
                         '推薦分數': score,
                         '季線之上': "✅" if above_ma60 else "❌"
                     }
-            except Exception as e:
-                # 記錄錯誤資訊供排錯，不靜默忽略
+            except Exception:
                 pass
             return None
 
-        # 使用 5 個 Worker 平行抓取
+        # 多執行緒併發處理
+        all_results = []
         buy_signals = []
         sell_signals = []
         total_stocks = len(target_stocks)
         completed_count = 0
+
+        progress_bar = st.progress(0)
+        status_text = st.empty()
 
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(process_single_stock, sid) for sid in target_stocks]
             for future in as_completed(futures):
                 res = future.result()
                 completed_count += 1
-                
-                # 更新進度條
                 progress_bar.progress(completed_count / total_stocks)
-                status_text.text(f"溫和多執行緒掃描中 ({completed_count}/{total_stocks})...")
-                
+                status_text.text(f"掃描進度 ({completed_count}/{total_stocks})...")
                 if res:
+                    all_results.append(res)
                     if res['推薦分數'] > 0:
                         buy_signals.append(res)
                     else:
                         sell_signals.append(res)
 
-        # 【關鍵修復】：掃描結束後，轉換為 DataFrame 並儲存至快取與 Session State
-        buy_df = pd.DataFrame(buy_signals)
-        sell_df = pd.DataFrame(sell_signals)
+        # 【關鍵修復】：根據當前 scan_mode 動態更新正確的 Cache (快取, /kæʃ/, 凱許) 與 Session State
+        curr_csv = CACHE_FILES[scan_mode]
+        curr_meta = META_FILES[scan_mode]
+        
+        # 1. 更新 metadata 時間戳記
+        with open(curr_meta, 'w', encoding='utf-8') as mf:
+            json.dump({"date": scan_date_str}, mf, ensure_ascii=False)
 
-        # 寫入 CSV 檔案
-        buy_df.to_csv("cache_mode_c_buy.csv", index=False)
-        sell_df.to_csv("cache_mode_c_sell.csv", index=False)
+        # 2. 依據模式類型寫入快取與更新 Session State
+        if "模式 A" in scan_mode or "模式 D" in scan_mode:
+            pd.DataFrame(all_results).to_csv(curr_csv, index=False)
+            st.session_state.scan_results[scan_mode] = {
+                "type": "single",
+                "data": all_results,
+                "date": scan_date_str
+            }
+        else:
+            buy_csv = curr_csv.replace(".csv", "_buy.csv")
+            sell_csv = curr_csv.replace(".csv", "_sell.csv")
+            pd.DataFrame(buy_signals).to_csv(buy_csv, index=False)
+            pd.DataFrame(sell_signals).to_csv(sell_csv, index=False)
+            pd.DataFrame(all_results).to_csv(curr_csv, index=False)
+            st.session_state.scan_results[scan_mode] = {
+                "type": "split",
+                "buy": buy_signals,
+                "sell": sell_signals,
+                "date": scan_date_str
+            }
 
-        # 存入 Session State
-        st.session_state['buy_df'] = buy_df
-        st.session_state['sell_df'] = sell_df
-        st.session_state['has_scanned'] = True
-
-        status_text.success("🎉 全市場掃描完成！正在載入報表...")
-        st.rerun() # 自動重新渲染頁面以顯示最新結果
+        status_text.success("🎉 掃描完成！正在更新報表...")
+        st.rerun()
 
 # ==========================================
 # 6. 說明折疊面板與結果呈現
