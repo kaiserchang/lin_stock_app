@@ -4,7 +4,9 @@ from datetime import datetime, timedelta
 import json
 import os
 import time
+import random
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from analysis_engine import LinJiaYangEngine
 from scan_orchestrator import TaiwanStockDataFetcher
 
@@ -327,38 +329,25 @@ if analyze_btn:
         start_date_str = (datetime.today() - timedelta(days=120)).strftime('%Y-%m-%d')
         fetcher = TaiwanStockDataFetcher()
         
-        for i, stock_id in enumerate(target_stocks):
-            stock_name = dynamic_name_mapping.get(stock_id, "") 
-            display_name = f"{stock_id} {stock_name}".strip()
-            
-            remaining_time = round((len(target_stocks) - i) * (0.8 + (5/50)) / 60, 1)
-            
+        # ==========================================
+        # 溫和型多執行緒處理 (限定 3 個 Worker)
+        # ==========================================
+        def process_single_stock(stock_id):
+            # 加入 0.2 ~ 0.5 秒隨機微幅延遲，打散併發封包避免被 WAF 封鎖
+            time.sleep(random.uniform(0.2, 0.5))
+            stock_name = dynamic_name_mapping.get(stock_id, "")
             try:
-                if scan_mode.startswith("模式 C"):
-                    if i > 0 and i % 50 == 0:
-                        status_text.text(f"🛑 防封鎖冷卻中...已掃描 {i} 檔，強制休息 5 秒。預估剩餘: {remaining_time} 分鐘")
-                        time.sleep(5)
-                    else:
-                        status_text.text(f"正在掃描 ({i+1}/{len(target_stocks)}): {display_name} | 預估剩餘: {remaining_time} 分鐘...")
-                    time.sleep(0.8)
-                else:
-                    status_text.text(f"正在掃描 ({i+1}/{len(target_stocks)}): {display_name} ...")
-                    time.sleep(0.2)
-                
                 df = fetcher.get_stock_daily_data(stock_id, start_date_str, end_date_str)
                 if not df.empty and len(df) >= 20:
                     engine = LinJiaYangEngine(df)
                     result_df = engine.run_analysis()
-                    
                     latest = result_df.iloc[-1]
                     score = int(latest['RecommendationScore'])
                     raw_signal = latest['Signal']
                     above_ma60 = latest['Above_MA60']
-                    
-                    # 取得整合圖示與說明的完整形態字串
                     formatted_signal = get_formatted_signal(score, raw_signal, above_ma60)
                     
-                    stock_info = {
+                    return {
                         '代碼': stock_id,
                         '名稱': stock_name if stock_name else "-",
                         '收盤價': latest['Close'],
@@ -368,50 +357,29 @@ if analyze_btn:
                         '推薦分數': score,
                         '季線之上': "✅" if above_ma60 else "❌"
                     }
-                    
-                    if scan_mode.startswith("模式 A") or scan_mode.startswith("模式 D"):
-                        mode_a_results.append(stock_info)
-                    else:
-                        if score > 0 or "順勢強攻" in formatted_signal or "多頭反轉" in formatted_signal or "多頭蓄勢" in formatted_signal:
-                            buy_signals.append(stock_info)
-                        else:
-                            sell_signals.append(stock_info)
-                            
-            except Exception as e:
+            except Exception:
                 pass
-            
-            progress_bar.progress((i + 1) / len(target_stocks))
-            
-        status_text.text("掃描完成！")
-        
-        current_csv = CACHE_FILES[scan_mode]
-        current_meta = META_FILES[scan_mode]
-        
-        meta_content = {"date": scan_date_str}
-        with open(current_meta, 'w', encoding='utf-8') as mf:
-            json.dump(meta_content, mf)
-            
-        if scan_mode.startswith("模式 A") or scan_mode.startswith("模式 D"):
-            df_res = pd.DataFrame(mode_a_results)
-            df_res.to_csv(current_csv, index=False, encoding='utf-8-sig')
-            st.session_state.scan_results[scan_mode] = {
-                "type": "single",
-                "data": mode_a_results,
-                "date": scan_date_str
-            }
-        else:
-            df_buy = pd.DataFrame(buy_signals)
-            df_sell = pd.DataFrame(sell_signals)
-            df_buy.to_csv(current_csv.replace(".csv", "_buy.csv"), index=False, encoding='utf-8-sig')
-            df_sell.to_csv(current_csv.replace(".csv", "_sell.csv"), index=False, encoding='utf-8-sig')
-            df_buy.to_csv(current_csv, index=False, encoding='utf-8-sig')
-            
-            st.session_state.scan_results[scan_mode] = {
-                "type": "split",
-                "buy": buy_signals,
-                "sell": sell_signals,
-                "date": scan_date_str
-            }
+            return None
+
+        # 使用 3 個 Worker 平行抓取
+        total_stocks = len(target_stocks)
+        completed_count = 0
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [executor.submit(process_single_stock, sid) for sid in target_stocks]
+            for future in as_completed(futures):
+                res = future.result()
+                completed_count += 1
+                
+                # 更新 Progress Bar (進度條, /ˈprɑː.ɡres bɑːr/, 普拉格瑞斯 霸)
+                progress_bar.progress(completed_count / total_stocks)
+                status_text.text(f"溫和多執行緒掃描中 ({completed_count}/{total_stocks})...")
+                
+                if res:
+                    if res['推薦分數'] > 0:
+                        buy_signals.append(res)
+                    else:
+                        sell_signals.append(res)
 
 # ==========================================
 # 6. 說明折疊面板與結果呈現
