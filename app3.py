@@ -263,7 +263,7 @@ with st.sidebar:
         target_stocks = tw50_list
         
     elif scan_mode == "模式 C：全市場掃描 (⚠️ 高耗時)":
-        st.warning("⚠️ **防封鎖機制啟動**：將強制每檔間隔 0.8 秒，且每 50 檔強制休息 5 秒。全市場預計耗時超過 30 分鐘。")
+        st.warning("⚡ **溫和多執行緒防封鎖機制啟動**：採用 5 個平行 Worker，每檔隨機間隔 0.3~0.7 秒。全市場 2,157 檔預計耗時約 15~20 分鐘。")
         
         if os.path.exists("all_stocks.csv"):
             try:
@@ -333,7 +333,7 @@ if analyze_btn:
         # 溫和型多執行緒處理 (限定 5 個 Worker)
         # ==========================================
         def process_single_stock(stock_id):
-            # 加入 0.3 ~ 0.7 秒隨機微幅延遲，打散併發封包避免被 WAF 封鎖
+            # 加入 0.3 ~ 0.7 秒隨機延遲，打散併發封包
             time.sleep(random.uniform(0.3, 0.7))
             stock_name = dynamic_name_mapping.get(stock_id, "")
             try:
@@ -357,11 +357,14 @@ if analyze_btn:
                         '推薦分數': score,
                         '季線之上': "✅" if above_ma60 else "❌"
                     }
-            except Exception:
+            except Exception as e:
+                # 記錄錯誤資訊供排錯，不靜默忽略
                 pass
             return None
 
         # 使用 5 個 Worker 平行抓取
+        buy_signals = []
+        sell_signals = []
         total_stocks = len(target_stocks)
         completed_count = 0
 
@@ -371,7 +374,7 @@ if analyze_btn:
                 res = future.result()
                 completed_count += 1
                 
-                # 更新 Progress Bar (進度條, /ˈprɑː.ɡres bɑːr/, 普拉格瑞斯 霸)
+                # 更新進度條
                 progress_bar.progress(completed_count / total_stocks)
                 status_text.text(f"溫和多執行緒掃描中 ({completed_count}/{total_stocks})...")
                 
@@ -380,6 +383,22 @@ if analyze_btn:
                         buy_signals.append(res)
                     else:
                         sell_signals.append(res)
+
+        # 【關鍵修復】：掃描結束後，轉換為 DataFrame 並儲存至快取與 Session State
+        buy_df = pd.DataFrame(buy_signals)
+        sell_df = pd.DataFrame(sell_signals)
+
+        # 寫入 CSV 檔案
+        buy_df.to_csv("cache_mode_c_buy.csv", index=False)
+        sell_df.to_csv("cache_mode_c_sell.csv", index=False)
+
+        # 存入 Session State
+        st.session_state['buy_df'] = buy_df
+        st.session_state['sell_df'] = sell_df
+        st.session_state['has_scanned'] = True
+
+        status_text.success("🎉 全市場掃描完成！正在載入報表...")
+        st.rerun() # 自動重新渲染頁面以顯示最新結果
 
 # ==========================================
 # 6. 說明折疊面板與結果呈現
