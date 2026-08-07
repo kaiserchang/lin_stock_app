@@ -22,7 +22,13 @@ CACHE_FILES = {
     "模式 C：全市場掃描 (⚠️ 高耗時)": "cache_mode_c.csv",
     "模式 D：上傳 CSV 檔案": "cache_mode_d.csv"
 }
-META_FILES = {k: v.replace(".csv", "_meta.json") for k, v in CACHE_FILES.items()}
+
+META_FILES = {
+    "模式 A：自訂關注清單": "cache_mode_a_meta.json",
+    "模式 B：台灣50成分股掃描": "cache_mode_b_meta.json",
+    "模式 C：全市場掃描 (⚠️ 高耗時)": "cache_mode_c_meta.json",
+    "模式 D：上傳 CSV 檔案": "cache_mode_d_meta.json"
+}
 
 TW50_MAPPING = {
     "1101": "台泥", "1216": "統一", "1301": "台塑", "1303": "南亞", "1326": "台化",
@@ -306,7 +312,7 @@ with st.sidebar:
                 st.error(f"❌ 讀取檔案失敗: {e}")
 
     st.divider()
-    analyze_btn = st.button("🚀 開始批次掃描", width="stretch")
+    analyze_btn = st.button("🚀 開始批次掃描", use_container_width=True)
 
 # ==========================================
 # 5. 批次運算與持久化儲存核心 (動態模式版)
@@ -374,7 +380,7 @@ if analyze_btn:
                     else:
                         sell_signals.append(res)
 
-        # 【關鍵修復】：根據當前 scan_mode 動態更新正確的 Cache (快取, /kæʃ/, 凱許) 與 Session State
+        # 【關鍵修復】：根據當前 scan_mode 動態更新正確的 Cache 與 Session State
         curr_csv = CACHE_FILES[scan_mode]
         curr_meta = META_FILES[scan_mode]
         
@@ -443,7 +449,7 @@ if current_cache:
             # 【修正3】強制套用欄位順序
             df_out = df_out[desired_cols]
             styled_out = df_out.style.format(format_dict).apply(highlight_signals, axis=1)
-            st.dataframe(styled_out, width="stretch")
+            st.dataframe(styled_out, use_container_width=True)
         else:
             st.info("尚無資料。")
     else:
@@ -456,7 +462,7 @@ if current_cache:
                 # 【修正3】強制套用欄位順序
                 df_buy = df_buy[desired_cols]
                 styled_buy = df_buy.style.format(format_dict).apply(highlight_signals, axis=1)
-                st.dataframe(styled_buy, width="stretch")
+                st.dataframe(styled_buy, use_container_width=True)
             else:
                 st.info("尚無強勢股票紀錄。")
                 
@@ -468,6 +474,6 @@ if current_cache:
                 # 【修正3】強制套用欄位順序
                 df_sell = df_sell[desired_cols]
                 styled_sell = df_sell.style.format(format_dict).apply(highlight_signals, axis=1)
-                st.dataframe(styled_sell, width="stretch")
+                st.dataframe(styled_sell, use_container_width=True)
 else:
     st.warning("⚠️ 目前此模式尚無掃描紀錄，請點擊左側的「🚀 開始批次掃描」按鈕來產生報表。")
