@@ -316,10 +316,10 @@ with st.sidebar:
     analyze_btn = st.button("🚀 開始批次掃描", use_container_width=True)
 
     # 👇 新增以下方案二的程式碼 👇
-        st.sidebar.markdown("---")  # 畫一條視覺分隔線
-        if st.sidebar.button("🧹 強制清除系統快取"):
-            st.cache_data.clear()
-            st.sidebar.success("快取已清除！請按 F5 重新整理網頁。")
+    st.sidebar.markdown("---")  # 畫一條視覺分隔線
+    if st.sidebar.button("🧹 強制清除系統快取"):
+        st.cache_data.clear()
+        st.sidebar.success("快取已清除！請按 F5 重新整理網頁。")
 
 # ==========================================
 # 5. 批次運算與持久化儲存核心 (動態模式版)
