@@ -442,6 +442,8 @@ current_cache = st.session_state.scan_results.get(scan_mode, None)
 
 if current_cache:
     scan_time = current_cache.get("date", "未知時間")
+    # 新增這行，將 2026-08-10 19:33 轉換為安全的 2026-08-10_1933
+    safe_date = scan_time.replace(":", "").replace(" ", "_")
     st.info(f"📅 **本組數據掃描時間**：{scan_time} (已自動載入歷史快取)")
     
     if current_cache["type"] == "single":
@@ -453,6 +455,17 @@ if current_cache:
             df_out = df_out[desired_cols]
             styled_out = df_out.style.format(format_dict).apply(highlight_signals, axis=1)
             st.dataframe(styled_out, use_container_width=True)
+
+            # 👇 新增以下程式碼：自訂下載按鈕
+            csv_data = df_out.to_csv(index=True).encode('utf-8-sig')
+            st.download_button(
+                label="📥 下載完整清單 (CSV)",
+                data=csv_data,
+                file_name=f"{scan_mode.split('：')[0]}_完整紀錄_{safe_date}.csv",
+                mime="text/csv",
+                key="download_single"
+            )
+            
         else:
             st.info("尚無資料。")
     else:
@@ -466,6 +479,17 @@ if current_cache:
                 df_buy = df_buy[desired_cols]
                 styled_buy = df_buy.style.format(format_dict).apply(highlight_signals, axis=1)
                 st.dataframe(styled_buy, use_container_width=True)
+
+                # 👇 新增以下程式碼：買進清單專屬下載
+                csv_buy = df_buy.to_csv(index=True).encode('utf-8-sig')
+                st.download_button(
+                    label="🟩 下載強勢買進清單 (CSV)",
+                    data=csv_buy,
+                    file_name=f"推薦買進_{safe_date}.csv",
+                    mime="text/csv",
+                    key="download_buy"
+                )
+            
             else:
                 st.info("尚無強勢股票紀錄。")
                 
@@ -478,5 +502,16 @@ if current_cache:
                 df_sell = df_sell[desired_cols]
                 styled_sell = df_sell.style.format(format_dict).apply(highlight_signals, axis=1)
                 st.dataframe(styled_sell, use_container_width=True)
+
+                # 👇 新增以下程式碼：警戒清單專屬下載
+                csv_sell = df_sell.to_csv(index=True).encode('utf-8-sig')
+                st.download_button(
+                    label="🟥 下載弱勢警戒清單 (CSV)",
+                    data=csv_sell,
+                    file_name=f"警戒賣出_{safe_date}.csv",
+                    mime="text/csv",
+                    key="download_sell"
+                )
+                
 else:
     st.warning("⚠️ 目前此模式尚無掃描紀錄，請點擊左側的「🚀 開始批次掃描」按鈕來產生報表。")
