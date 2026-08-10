@@ -270,7 +270,7 @@ with st.sidebar:
         target_stocks = tw50_list
         
     elif scan_mode == "模式 C：全市場掃描 (⚠️ 高耗時)":
-        st.warning("⚡ **溫和多執行緒防封鎖機制啟動**：採用 5 個平行 Worker，每檔隨機間隔 0.3 至 0.7 秒。全市場 2,157 檔預計耗時約 15 至 20 分鐘。")
+        st.warning("⚡ **溫和多執行緒防封鎖機制啟動**：採用 5 個平行 Worker，每檔隨機間隔 0.3 至 0.7 秒。台股全市場掃描預計耗時約 15 至 20 分鐘。")
         
         if os.path.exists("all_stocks.csv"):
             try:
