@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import zoneinfo  # 👈 新增這行，用於載入系統時區資料庫
 import json
 import os
 import time
@@ -322,10 +323,12 @@ if analyze_btn:
         st.warning("請至少選擇或提供一檔股票！")
     else:
         target_stocks = list(dict.fromkeys([str(x).strip() for x in target_stocks if str(x).strip() and str(x) != 'nan']))
-        
-        scan_date_str = datetime.today().strftime('%Y-%m-%d %H:%M')
-        end_date_str = datetime.today().strftime('%Y-%m-%d')
-        start_date_str = (datetime.today() - timedelta(days=120)).strftime('%Y-%m-%d')
+
+        # 👈 新增並替換以下區塊
+        tz_taipei = zoneinfo.ZoneInfo("Asia/Taipei")
+        scan_date_str = datetime.now(tz_taipei).strftime('%Y-%m-%d %H:%M')
+        end_date_str = datetime.now(tz_taipei).strftime('%Y-%m-%d')
+        start_date_str = (datetime.now(tz_taipei) - timedelta(days=120)).strftime('%Y-%m-%d')
         fetcher = TaiwanStockDataFetcher()
 
         def process_single_stock(stock_id):
