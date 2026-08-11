@@ -321,19 +321,70 @@ with st.sidebar:
         st.cache_data.clear()
         st.sidebar.success("快取已清除！請按 F5 重新整理網頁。")
 
+st.divider()
+
 # ==========================================
-# 5. 批次運算與持久化儲存核心 (動態模式版)
+# 5. 批次運算與持久化儲存核心 (斷點續傳升級版)
 # ==========================================
-if analyze_btn:
-    st.session_state.scan_results.pop(scan_mode, None) # 先行強制刪除當前模式的舊快取
-    st.info("🔄 舊有快取已清除，正在重新向市場獲取最新資料，請耐心等候...")
+analyze_btn = st.button("🚀 開始全新批次掃描", use_container_width=True)
+
+# 👇 新增：偵測備份檔，提供下載與接續按鈕 👇
+resume_btn = False
+if os.path.exists("backup_temp_results.csv"):
+    st.warning("⚠️ 系統偵測到前次未完成的掃描備份！")
+    colA, colB = st.columns(2)
+    with colA:
+        resume_btn = st.button("▶️ 接續未完成的掃描 (斷點續傳)", use_container_width=True)
+    with colB:
+        with open("backup_temp_results.csv", "rb") as f:
+            st.download_button("📥 先下載目前已備份進度 (CSV)", f, file_name="中斷備份檔.csv", use_container_width=True)
+
+st.sidebar.markdown("---") 
+if st.sidebar.button("🧹 強制清除系統快取"):
+    st.cache_data.clear()
+    st.sidebar.success("快取已清除！請按 F5 重新整理網頁。")
+
+# 定義承接資料的容器
+all_results = []
+buy_signals = []
+sell_signals = []
+
+if analyze_btn or resume_btn:
+    st.session_state.scan_results.pop(scan_mode, None) 
     
     if not target_stocks:
         st.warning("請至少選擇或提供一檔股票！")
     else:
         target_stocks = list(dict.fromkeys([str(x).strip() for x in target_stocks if str(x).strip() and str(x) != 'nan']))
 
-        # 👈 新增並替換以下區塊
+        # 🌟 斷點續傳核心邏輯 🌟
+        if resume_btn and os.path.exists("backup_temp_results.csv"):
+            try:
+                # 讀取備份檔
+                backup_df = pd.read_csv("backup_temp_results.csv", dtype={'代碼': str})
+                processed_sids = backup_df['代碼'].astype(str).tolist()
+
+                # 恢復已經算好的資料到容器中
+                all_results = backup_df.to_dict('records')
+                for res in all_results:
+                    # 容錯處理：若是舊版無分數資料預設為 0
+                    if int(res.get('推薦分數', 0)) > 0:
+                        buy_signals.append(res)
+                    else:
+                        sell_signals.append(res)
+
+                # 關鍵：把已經做過的股票從目標清單中「剃除」
+                target_stocks = [s for s in target_stocks if s not in processed_sids]
+                st.info(f"🔄 讀取備份成功！跳過已完成的 {len(processed_sids)} 檔，剩下 {len(target_stocks)} 檔即將接續掃描...")
+            except Exception as e:
+                st.error(f"備份檔讀取失敗，請考慮使用全新掃描: {e}")
+        elif analyze_btn:
+            st.info("🔄 舊有快取已清除，正在重新向市場獲取最新資料...")
+            # 若是全新掃描，順便清空舊備份，避免下次混淆
+            if os.path.exists("backup_temp_results.csv"):
+                os.remove("backup_temp_results.csv")
+
+        # 👈 以下接續原有的時區設定與 fetcher 宣告
         tz_taipei = zoneinfo.ZoneInfo("Asia/Taipei")
         scan_date_str = datetime.now(tz_taipei).strftime('%Y-%m-%d %H:%M')
         end_date_str = datetime.now(tz_taipei).strftime('%Y-%m-%d')
