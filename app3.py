@@ -325,6 +325,9 @@ with st.sidebar:
 # 5. 批次運算與持久化儲存核心 (動態模式版)
 # ==========================================
 if analyze_btn:
+    st.session_state.scan_results.pop(scan_mode, None) # 先行強制刪除當前模式的舊快取
+    st.info("🔄 舊有快取已清除，正在重新向市場獲取最新資料，請耐心等候...")
+    
     if not target_stocks:
         st.warning("請至少選擇或提供一檔股票！")
     else:
@@ -369,25 +372,50 @@ if analyze_btn:
         all_results = []
         buy_signals = []
         sell_signals = []
+        
+        import concurrent.futures
+        import pandas as pd
+
         total_stocks = len(target_stocks)
         completed_count = 0
+        BATCH_SIZE = 100  # 設定每 100 檔執行一次暫時存檔
 
+        # 建立前端 UI 佔位符
         progress_bar = st.progress(0)
         status_text = st.empty()
+        save_status = st.empty()
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(process_single_stock, sid) for sid in target_stocks]
-            for future in as_completed(futures):
-                res = future.result()
+        # 啟動多執行緒掃描
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(process_single_stock, sid): sid for sid in target_stocks}
+    
+            for future in concurrent.futures.as_completed(futures):
+                sid = futures[future]
+                try:
+                    res = future.result()
+                    # 保留你原本的買賣訊號分類邏輯
+                    if res:
+                        all_results.append(res)
+                        if res.get('推薦分數', 0) > 0:
+                            buy_signals.append(res)
+                        else:
+                            sell_signals.append(res)
+                except Exception as e:
+                    print(f"股票 {sid} 處理失敗: {e}")
+
+                # 1. 即時更新進度條 (防止雲端判定閒置而強制中斷)
                 completed_count += 1
                 progress_bar.progress(completed_count / total_stocks)
-                status_text.text(f"掃描進度 ({completed_count}/{total_stocks})...")
-                if res:
-                    all_results.append(res)
-                    if res['推薦分數'] > 0:
-                        buy_signals.append(res)
-                    else:
-                        sell_signals.append(res)
+                status_text.text(f"🚀 掃描進度 ({completed_count} / {total_stocks})...")
+
+                # 2. 分批存檔機制 (Checkpoint)
+                if completed_count % BATCH_SIZE == 0 or completed_count == total_stocks:
+                    if all_results:
+                        pd.DataFrame(all_results).to_csv("backup_temp_results.csv", index=False, encoding="utf-8-sig")
+                        save_status.success(f"💾 系統存檔點建立：已備份至第 {completed_count} 筆。")
+
+        # 迴圈結束，清除備份提示字樣
+        save_status.empty()        
 
         # 【關鍵修復】：根據當前 scan_mode 動態更新正確的 Cache 與 Session State
         curr_csv = CACHE_FILES[scan_mode]
