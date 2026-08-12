@@ -454,7 +454,11 @@ if analyze_btn or resume_btn:
                         save_status.success(f"💾 系統存檔點建立：已備份至第 {completed_count} 筆。")
 
         # 迴圈結束，清除備份提示字樣
-        save_status.empty()        
+        save_status.empty() 
+
+        # 👇 新增：順利完成全部掃描後，自動刪除備份檔，避免下次再跳出警告 👇
+        if completed_count == total_stocks and os.path.exists("backup_temp_results.csv"):
+            os.remove("backup_temp_results.csv")
 
         # 【關鍵修復】：根據當前 scan_mode 動態更新正確的 Cache 與 Session State
         curr_csv = CACHE_FILES[scan_mode]
