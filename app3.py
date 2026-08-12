@@ -312,24 +312,20 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"❌ 讀取檔案失敗: {e}")
 
-    st.divider()
-
+st.sidebar.markdown("---")
 
 # ==========================================
-# 5. 批次運算與持久化儲存核心 (斷點續傳升級版)
+# 5. 批次運算與持久化儲存核心 (斷點續傳升級版 - 側邊欄修正)
 # ==========================================
-analyze_btn = st.button("🚀 開始全新批次掃描", use_container_width=True)
+analyze_btn = st.sidebar.button("🚀 開始全新批次掃描", use_container_width=True)
 
-# 👇 新增：偵測備份檔，提供下載與接續按鈕 👇
+# 👇 偵測備份檔，提供下載與接續按鈕 (改為側邊欄垂直排列) 👇
 resume_btn = False
 if os.path.exists("backup_temp_results.csv"):
-    st.warning("⚠️ 系統偵測到前次未完成的掃描備份！")
-    colA, colB = st.columns(2)
-    with colA:
-        resume_btn = st.button("▶️ 接續未完成的掃描 (斷點續傳)", use_container_width=True)
-    with colB:
-        with open("backup_temp_results.csv", "rb") as f:
-            st.download_button("📥 先下載目前已備份進度 (CSV)", f, file_name="中斷備份檔.csv", use_container_width=True)
+    st.sidebar.warning("⚠️ 系統偵測到前次未完成的掃描備份！")
+    resume_btn = st.sidebar.button("▶️ 接續未完成的掃描 (斷點續傳)", use_container_width=True)
+    with open("backup_temp_results.csv", "rb") as f:
+        st.sidebar.download_button("📥 先下載目前已備份進度 (CSV)", f, file_name="中斷備份檔.csv", use_container_width=True)
 
 st.sidebar.markdown("---") 
 if st.sidebar.button("🧹 強制清除系統快取"):
