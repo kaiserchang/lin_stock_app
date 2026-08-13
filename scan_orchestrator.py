@@ -154,6 +154,8 @@ class TaiwanStockDataFetcher:
 
                 current = (current + timedelta(days=32)).replace(day=1)
             df = pd.DataFrame(records)
+            if df.empty:
+                return pd.DataFrame()
             df = df.dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
             if df.empty:
                 logger.warning(f'All TWSE data rows for {stock_id} contained invalid OHLCV values')
@@ -215,62 +217,62 @@ class TaiwanStockDataFetcher:
         logger.info(f"Using stock list with {len(fallback_stocks)} stocks")
         return pd.DataFrame(fallback_stocks)
 
-def get_stock_daily_data_tpex(self, stock_id, start_date, end_date):
-        """使用櫃買中心 (TPEx) API 取得上櫃日線數據，作為終極備援"""
-        try:
-            def parse_roc_date(date_str):
-                # 將民國年 (如 113/08/01) 轉為西元年
-                parts = date_str.strip().split('/')
-                return datetime(int(parts[0]) + 1911, int(parts[1]), int(parts[2]))
-            
-            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-            session = requests.Session()
-            session.trust_env = False
-            session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-            
-            records = []
-            current = datetime(start_dt.year, start_dt.month, 1)
-            
-            while current <= end_dt:
-                # 櫃買中心 API 格式需為 民國年/月份 (例如 113/08)
-                query_date = f"{current.year - 1911}/{current.month:02d}"
-                url = f'https://www.tpex.org.tw/web/stock/aftertrading/daily_trading_info/st43_result.php?l=zh-tw&d={query_date}&stkno={stock_id}'
+    def get_stock_daily_data_tpex(self, stock_id, start_date, end_date):
+            """使用櫃買中心 (TPEx) API 取得上櫃日線數據，作為終極備援"""
+            try:
+                def parse_roc_date(date_str):
+                    # 將民國年 (如 113/08/01) 轉為西元年
+                    parts = date_str.strip().split('/')
+                    return datetime(int(parts[0]) + 1911, int(parts[1]), int(parts[2]))
                 
-                try:
-                    res = session.get(url, timeout=15)
-                    if res.status_code == 200:
-                        data = res.json()
-                        for row in data.get('aaData', []):
-                            try:
-                                row_date = parse_roc_date(row[0].replace(' ', ''))
-                                if start_dt <= row_date <= end_dt:
-                                    open_p = pd.to_numeric(str(row[3]).replace(',', ''), errors='coerce')
-                                    high_p = pd.to_numeric(str(row[4]).replace(',', ''), errors='coerce')
-                                    low_p = pd.to_numeric(str(row[5]).replace(',', ''), errors='coerce')
-                                    close_p = pd.to_numeric(str(row[6]).replace(',', ''), errors='coerce')
-                                    # TPEx 的成交量單位是「千股」，必須乘 1000 才能與 TWSE/Yahoo 統一
-                                    vol = pd.to_numeric(str(row[1]).replace(',', ''), errors='coerce') * 1000
-                                    
-                                    if not any(pd.isna(v) for v in [open_p, high_p, low_p, close_p, vol]):
-                                        records.append({'Date': row_date, 'Open': open_p, 'High': high_p, 'Low': low_p, 'Close': close_p, 'Volume': vol})
-                            except Exception:
-                                continue
-                except Exception:
-                    pass
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                session = requests.Session()
+                session.trust_env = False
+                session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+                
+                records = []
+                current = datetime(start_dt.year, start_dt.month, 1)
+                
+                while current <= end_dt:
+                    # 櫃買中心 API 格式需為 民國年/月份 (例如 113/08)
+                    query_date = f"{current.year - 1911}/{current.month:02d}"
+                    url = f'https://www.tpex.org.tw/web/stock/aftertrading/daily_trading_info/st43_result.php?l=zh-tw&d={query_date}&stkno={stock_id}'
                     
-                current = (current + timedelta(days=32)).replace(day=1)
+                    try:
+                        res = session.get(url, timeout=15)
+                        if res.status_code == 200:
+                            data = res.json()
+                            for row in data.get('aaData', []):
+                                try:
+                                    row_date = parse_roc_date(row[0].replace(' ', ''))
+                                    if start_dt <= row_date <= end_dt:
+                                        open_p = pd.to_numeric(str(row[3]).replace(',', ''), errors='coerce')
+                                        high_p = pd.to_numeric(str(row[4]).replace(',', ''), errors='coerce')
+                                        low_p = pd.to_numeric(str(row[5]).replace(',', ''), errors='coerce')
+                                        close_p = pd.to_numeric(str(row[6]).replace(',', ''), errors='coerce')
+                                        # TPEx 的成交量單位是「千股」，必須乘 1000 才能與 TWSE/Yahoo 統一
+                                        vol = pd.to_numeric(str(row[1]).replace(',', ''), errors='coerce') * 1000
+                                        
+                                        if not any(pd.isna(v) for v in [open_p, high_p, low_p, close_p, vol]):
+                                            records.append({'Date': row_date, 'Open': open_p, 'High': high_p, 'Low': low_p, 'Close': close_p, 'Volume': vol})
+                                except Exception:
+                                    continue
+                    except Exception:
+                        pass
+                        
+                    current = (current + timedelta(days=32)).replace(day=1)
+                    
+                df = pd.DataFrame(records)
+                if df.empty:
+                    return pd.DataFrame()
+                df = df.sort_values('Date').set_index('Date')
+                logger.info(f'Successfully fetched {len(df)} days of data for {stock_id} from TPEx')
+                return df[['Open', 'High', 'Low', 'Close', 'Volume']]
                 
-            df = pd.DataFrame(records)
-            if df.empty:
+            except Exception as e:
+                logger.error(f'TPEx error for {stock_id}: {e}')
                 return pd.DataFrame()
-            df = df.sort_values('Date').set_index('Date')
-            logger.info(f'Successfully fetched {len(df)} days of data for {stock_id} from TPEx')
-            return df[['Open', 'High', 'Low', 'Close', 'Volume']]
-            
-        except Exception as e:
-            logger.error(f'TPEx error for {stock_id}: {e}')
-            return pd.DataFrame()
 
     def get_stock_daily_data(self, stock_id, start_date, end_date):
         """獲取股票日線數據，支援動態後綴與三層來源標籤 (Yahoo -> TWSE -> TPEx)"""
