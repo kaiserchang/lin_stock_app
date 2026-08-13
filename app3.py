@@ -528,7 +528,7 @@ current_cache = st.session_state.scan_results.get(scan_mode, None)
 
 # 👇 破除黑箱：從各模式專屬的保險箱提取失敗日誌 👇
 if current_cache and current_cache.get("failed_logs"):
-    with st.expander(f"⚠️ 共有 {len(current_cache['failed_logs'])} 檔股票掃描失敗 (點擊展開查看原因)", expanded=True):
+    with st.expander(f"⚠️ 共有 {len(current_cache['failed_logs'])} 檔股票掃描失敗 (點擊展開查看原因)", expanded=False):
         st.dataframe(pd.DataFrame(current_cache['failed_logs']), width="stretch")
 
 if current_cache:
