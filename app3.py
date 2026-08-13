@@ -406,10 +406,10 @@ if analyze_btn or resume_btn:
                     }
             except Exception as e:
                 # 捕捉具體錯誤原因回傳
-                return {"代碼": stock_id, "狀態": "失敗", "原因": f"程式執行錯誤: {str(e)}"}
+                return {"代碼": stock_id, "名稱": stock_name, "狀態": "失敗", "原因": f"程式執行錯誤: {str(e)}"}
 
             # 若執行到最後都沒有成功進到 return 字典，代表沒抓到資料
-            return {"代碼": stock_id, "狀態": "失敗", "原因": "API無回傳資料或日線不足20天"}
+            return {"代碼": stock_id, "名稱": stock_name, "狀態": "失敗", "原因": "API無回傳資料或日線不足20天"}
 
         # 多執行緒併發處理
         all_results = []
