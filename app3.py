@@ -319,15 +319,15 @@ st.sidebar.markdown("---")
 # ==========================================
 # 5. 批次運算與持久化儲存核心 (斷點續傳升級版 - 側邊欄修正)
 # ==========================================
-analyze_btn = st.sidebar.button("🚀 開始全新批次掃描", use_container_width=True)
+analyze_btn = st.sidebar.button("🚀 開始全新批次掃描", width="stretch")
 
 # 👇 偵測備份檔，提供下載與接續按鈕 (改為側邊欄垂直排列) 👇
 resume_btn = False
 if os.path.exists("backup_temp_results.csv"):
     st.sidebar.warning("⚠️ 系統偵測到前次未完成的掃描備份！")
-    resume_btn = st.sidebar.button("▶️ 接續未完成的掃描 (斷點續傳)", use_container_width=True)
+    resume_btn = st.sidebar.button("▶️ 接續未完成的掃描 (斷點續傳)", width="stretch")
     with open("backup_temp_results.csv", "rb") as f:
-        st.sidebar.download_button("📥 先下載目前已備份進度 (CSV)", f, file_name="中斷備份檔.csv", use_container_width=True)
+        st.sidebar.download_button("📥 先下載目前已備份進度 (CSV)", f, file_name="中斷備份檔.csv", width="stretch")
 
 st.sidebar.markdown("---") 
 if st.sidebar.button("🧹 強制清除系統快取"):
@@ -529,7 +529,7 @@ current_cache = st.session_state.scan_results.get(scan_mode, None)
 # 👇 破除黑箱：從各模式專屬的保險箱提取失敗日誌 👇
 if current_cache and current_cache.get("failed_logs"):
     with st.expander(f"⚠️ 共有 {len(current_cache['failed_logs'])} 檔股票掃描失敗 (點擊展開查看原因)", expanded=True):
-        st.dataframe(pd.DataFrame(current_cache['failed_logs']), use_container_width=True)
+        st.dataframe(pd.DataFrame(current_cache['failed_logs']), width="stretch")
 
 if current_cache:
     scan_time = current_cache.get("date", "未知時間")
@@ -545,7 +545,7 @@ if current_cache:
             # 【修正3】強制套用欄位順序
             df_out = df_out.reindex(columns=desired_cols, fill_value='未知')
             styled_out = df_out.style.format(format_dict).apply(highlight_signals, axis=1)
-            st.dataframe(styled_out, use_container_width=True)
+            st.dataframe(styled_out, width="stretch")
 
             # 👇 新增以下程式碼：自訂下載按鈕
             csv_data = df_out.to_csv(index=True).encode('utf-8-sig')
@@ -569,7 +569,7 @@ if current_cache:
                 # 【修正3】強制套用欄位順序
                 df_buy = df_buy.reindex(columns=desired_cols, fill_value='未知')
                 styled_buy = df_buy.style.format(format_dict).apply(highlight_signals, axis=1)
-                st.dataframe(styled_buy, use_container_width=True)
+                st.dataframe(styled_buy, width="stretch")
 
                 # 👇 新增以下程式碼：買進清單專屬下載
                 csv_buy = df_buy.to_csv(index=True).encode('utf-8-sig')
@@ -592,7 +592,7 @@ if current_cache:
                 # 【修正3】強制套用欄位順序
                 df_sell = df_sell.reindex(columns=desired_cols, fill_value='未知')
                 styled_sell = df_sell.style.format(format_dict).apply(highlight_signals, axis=1)
-                st.dataframe(styled_sell, use_container_width=True)
+                st.dataframe(styled_sell, width="stretch")
 
                 # 👇 新增以下程式碼：警戒清單專屬下載
                 csv_sell = df_sell.to_csv(index=True).encode('utf-8-sig')
