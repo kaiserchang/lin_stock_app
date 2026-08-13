@@ -469,10 +469,8 @@ if analyze_btn or resume_btn:
         if completed_count == total_stocks and os.path.exists("backup_temp_results.csv"):
             os.remove("backup_temp_results.csv")
     
-        # 👇 新增：在畫面上方顯示黑箱除錯日誌 👇
-        if failed_logs:
-            with st.expander(f"⚠️ 共有 {len(failed_logs)} 檔股票掃描失敗 (點擊展開查看原因)"):
-                st.dataframe(pd.DataFrame(failed_logs), use_container_width=True)
+        # 將失敗日誌存入跨頁面的長期記憶體中，無論有無失敗都覆寫，以清除舊紀錄
+        st.session_state.current_failed_logs = failed_logs
 
         # 【關鍵修復】：根據當前 scan_mode 動態更新正確的 Cache 與 Session State
         curr_csv = CACHE_FILES[scan_mode]
@@ -528,6 +526,11 @@ format_dict = {'收盤價': '{:.2f}', '成交量': '{:,}', '季線(MA60)': '{:.2
 
 # 【修正2】定義期望的欄位顯示順序
 desired_cols = ['名稱', '收盤價', '成交量', '最新形態', '推薦分數', '季線(MA60)', '季線之上']
+
+# 👇 破除黑箱：在網頁重新整理後，從保險箱提取並將失敗日誌顯示出來 👇
+if st.session_state.get("current_failed_logs"):
+    with st.expander(f"⚠️ 共有 {len(st.session_state.current_failed_logs)} 檔股票掃描失敗 (點擊展開查看原因)", expanded=True):
+        st.dataframe(pd.DataFrame(st.session_state.current_failed_logs), use_container_width=True)
 
 current_cache = st.session_state.scan_results.get(scan_mode, None)
 
