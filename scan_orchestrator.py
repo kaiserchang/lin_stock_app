@@ -215,65 +215,123 @@ class TaiwanStockDataFetcher:
         logger.info(f"Using stock list with {len(fallback_stocks)} stocks")
         return pd.DataFrame(fallback_stocks)
 
-    def get_stock_daily_data(self, stock_id, start_date, end_date):
-            """獲取股票日線數據，支援動態後綴與來源標籤"""
-            try:
-                # 1. 切除中文，確保只有數字代碼 (過濾 '4931 新盛力' -> '4931')
-                stock_id = str(stock_id).split()[0]
-                logger.info(f"Fetching data for {stock_id} from {start_date} to {end_date}")
+def get_stock_daily_data_tpex(self, stock_id, start_date, end_date):
+        """使用櫃買中心 (TPEx) API 取得上櫃日線數據，作為終極備援"""
+        try:
+            def parse_roc_date(date_str):
+                # 將民國年 (如 113/08/01) 轉為西元年
+                parts = date_str.strip().split('/')
+                return datetime(int(parts[0]) + 1911, int(parts[1]), int(parts[2]))
+            
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            session = requests.Session()
+            session.trust_env = False
+            session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+            
+            records = []
+            current = datetime(start_dt.year, start_dt.month, 1)
+            
+            while current <= end_dt:
+                # 櫃買中心 API 格式需為 民國年/月份 (例如 113/08)
+                query_date = f"{current.year - 1911}/{current.month:02d}"
+                url = f'https://www.tpex.org.tw/web/stock/aftertrading/daily_trading_info/st43_result.php?l=zh-tw&d={query_date}&stkno={stock_id}'
                 
-                session = requests.Session()
-                session.trust_env = False
-                session.headers.update({
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                    "Accept-Language": "en-US,en;q=0.9",
-                })
-                
-                df = pd.DataFrame()
-                data_source = "Yahoo" # 預設來源標籤
-                
-                # 2. 雙棲嘗試：先上市(.TW)，後上櫃(.TWO)
-                for suffix in [".TW", ".TWO"]:
-                    ticker = f"{stock_id}{suffix}"
-                    for attempt in range(1, 4):
-                        try:
-                            df = yf.download(ticker, start=start_date, end=end_date, progress=False, threads=False, session=session)
-                            if not df.empty and len(df) > 0:
-                                break
-                        except Exception:
-                            time.sleep(1)
-                    if not df.empty and len(df) > 0:
-                        break
-    
-                # 3. 備援機制：如果 Yahoo 徹底失敗，改叫 TWSE
-                if df.empty or len(df) == 0:
-                    logger.warning(f"Yahoo failed for {stock_id}, switching to TWSE fallback.")
-                    df = self.get_stock_daily_data_twse(stock_id, start_date, end_date)
-                    data_source = "TWSE" # 更改來源標籤為證交所
+                try:
+                    res = session.get(url, timeout=15)
+                    if res.status_code == 200:
+                        data = res.json()
+                        for row in data.get('aaData', []):
+                            try:
+                                row_date = parse_roc_date(row[0].replace(' ', ''))
+                                if start_dt <= row_date <= end_dt:
+                                    open_p = pd.to_numeric(str(row[3]).replace(',', ''), errors='coerce')
+                                    high_p = pd.to_numeric(str(row[4]).replace(',', ''), errors='coerce')
+                                    low_p = pd.to_numeric(str(row[5]).replace(',', ''), errors='coerce')
+                                    close_p = pd.to_numeric(str(row[6]).replace(',', ''), errors='coerce')
+                                    # TPEx 的成交量單位是「千股」，必須乘 1000 才能與 TWSE/Yahoo 統一
+                                    vol = pd.to_numeric(str(row[1]).replace(',', ''), errors='coerce') * 1000
+                                    
+                                    if not any(pd.isna(v) for v in [open_p, high_p, low_p, close_p, vol]):
+                                        records.append({'Date': row_date, 'Open': open_p, 'High': high_p, 'Low': low_p, 'Close': close_p, 'Volume': vol})
+                            except Exception:
+                                continue
+                except Exception:
+                    pass
                     
-                    if df.empty or len(df) == 0:
-                        return pd.DataFrame()
-    
-                # 4. 欄位清洗與標籤注入
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
-                if 'Adj Close' in df.columns:
-                    df = df.drop('Adj Close', axis=1)
-                    
-                # 🌟 將來源標籤寫入 DataFrame 中
-                df['Data_Source'] = data_source
+                current = (current + timedelta(days=32)).replace(day=1)
                 
-                df = df[['Open', 'High', 'Low', 'Close', 'Volume', 'Data_Source']]
-                df = df.dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
-                
-                if len(df) < 20:
-                    return pd.DataFrame()
-                    
-                return df
-                
-            except Exception as e:
-                logger.error(f"Failed to fetch data for {stock_id}: {e}")
+            df = pd.DataFrame(records)
+            if df.empty:
                 return pd.DataFrame()
+            df = df.sort_values('Date').set_index('Date')
+            logger.info(f'Successfully fetched {len(df)} days of data for {stock_id} from TPEx')
+            return df[['Open', 'High', 'Low', 'Close', 'Volume']]
+            
+        except Exception as e:
+            logger.error(f'TPEx error for {stock_id}: {e}')
+            return pd.DataFrame()
+
+    def get_stock_daily_data(self, stock_id, start_date, end_date):
+        """獲取股票日線數據，支援動態後綴與三層來源標籤 (Yahoo -> TWSE -> TPEx)"""
+        try:
+            stock_id = str(stock_id).split()[0]
+            logger.info(f"Fetching data for {stock_id} from {start_date} to {end_date}")
+            
+            session = requests.Session()
+            session.trust_env = False
+            session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                "Accept-Language": "en-US,en;q=0.9",
+            })
+            
+            df = pd.DataFrame()
+            data_source = "Yahoo" 
+            
+            for suffix in [".TW", ".TWO"]:
+                ticker = f"{stock_id}{suffix}"
+                for attempt in range(1, 4):
+                    try:
+                        df = yf.download(ticker, start=start_date, end=end_date, progress=False, threads=False, session=session)
+                        if not df.empty and len(df) > 0:
+                            break
+                    except Exception:
+                        time.sleep(1)
+                if not df.empty and len(df) > 0:
+                    break
+
+            # 🌟 啟動多層級備援機制 🌟
+            if df.empty or len(df) == 0:
+                logger.warning(f"Yahoo failed for {stock_id}, switching to TWSE fallback.")
+                df = self.get_stock_daily_data_twse(stock_id, start_date, end_date)
+                data_source = "TWSE"
+                
+                # 如果證交所也找不到 (代表是上櫃股)，啟用 TPEx 終極備援
+                if df.empty or len(df) == 0:
+                    logger.warning(f"TWSE failed for {stock_id}, switching to TPEx fallback.")
+                    df = self.get_stock_daily_data_tpex(stock_id, start_date, end_date)
+                    data_source = "TPEx"
+
+                if df.empty or len(df) == 0:
+                    return pd.DataFrame()
+
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            if 'Adj Close' in df.columns:
+                df = df.drop('Adj Close', axis=1)
+                
+            df['Data_Source'] = data_source
+            df = df[['Open', 'High', 'Low', 'Close', 'Volume', 'Data_Source']]
+            df = df.dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
+            
+            if len(df) < 20:
+                return pd.DataFrame()
+                
+            return df
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch data for {stock_id}: {e}")
+            return pd.DataFrame()
 
 class ScanLogWriter:
     """用於寫入掃描日誌的類別"""
