@@ -215,65 +215,65 @@ class TaiwanStockDataFetcher:
         logger.info(f"Using stock list with {len(fallback_stocks)} stocks")
         return pd.DataFrame(fallback_stocks)
 
-def get_stock_daily_data(self, stock_id, start_date, end_date):
-        """獲取股票日線數據，支援動態後綴與來源標籤"""
-        try:
-            # 1. 切除中文，確保只有數字代碼 (過濾 '4931 新盛力' -> '4931')
-            stock_id = str(stock_id).split()[0]
-            logger.info(f"Fetching data for {stock_id} from {start_date} to {end_date}")
-            
-            session = requests.Session()
-            session.trust_env = False
-            session.headers.update({
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                "Accept-Language": "en-US,en;q=0.9",
-            })
-            
-            df = pd.DataFrame()
-            data_source = "Yahoo" # 預設來源標籤
-            
-            # 2. 雙棲嘗試：先上市(.TW)，後上櫃(.TWO)
-            for suffix in [".TW", ".TWO"]:
-                ticker = f"{stock_id}{suffix}"
-                for attempt in range(1, 4):
-                    try:
-                        df = yf.download(ticker, start=start_date, end=end_date, progress=False, threads=False, session=session)
-                        if not df.empty and len(df) > 0:
-                            break
-                    except Exception:
-                        time.sleep(1)
-                if not df.empty and len(df) > 0:
-                    break
-
-            # 3. 備援機制：如果 Yahoo 徹底失敗，改叫 TWSE
-            if df.empty or len(df) == 0:
-                logger.warning(f"Yahoo failed for {stock_id}, switching to TWSE fallback.")
-                df = self.get_stock_daily_data_twse(stock_id, start_date, end_date)
-                data_source = "TWSE" # 更改來源標籤為證交所
+    def get_stock_daily_data(self, stock_id, start_date, end_date):
+            """獲取股票日線數據，支援動態後綴與來源標籤"""
+            try:
+                # 1. 切除中文，確保只有數字代碼 (過濾 '4931 新盛力' -> '4931')
+                stock_id = str(stock_id).split()[0]
+                logger.info(f"Fetching data for {stock_id} from {start_date} to {end_date}")
                 
+                session = requests.Session()
+                session.trust_env = False
+                session.headers.update({
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Accept-Language": "en-US,en;q=0.9",
+                })
+                
+                df = pd.DataFrame()
+                data_source = "Yahoo" # 預設來源標籤
+                
+                # 2. 雙棲嘗試：先上市(.TW)，後上櫃(.TWO)
+                for suffix in [".TW", ".TWO"]:
+                    ticker = f"{stock_id}{suffix}"
+                    for attempt in range(1, 4):
+                        try:
+                            df = yf.download(ticker, start=start_date, end=end_date, progress=False, threads=False, session=session)
+                            if not df.empty and len(df) > 0:
+                                break
+                        except Exception:
+                            time.sleep(1)
+                    if not df.empty and len(df) > 0:
+                        break
+    
+                # 3. 備援機制：如果 Yahoo 徹底失敗，改叫 TWSE
                 if df.empty or len(df) == 0:
+                    logger.warning(f"Yahoo failed for {stock_id}, switching to TWSE fallback.")
+                    df = self.get_stock_daily_data_twse(stock_id, start_date, end_date)
+                    data_source = "TWSE" # 更改來源標籤為證交所
+                    
+                    if df.empty or len(df) == 0:
+                        return pd.DataFrame()
+    
+                # 4. 欄位清洗與標籤注入
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                if 'Adj Close' in df.columns:
+                    df = df.drop('Adj Close', axis=1)
+                    
+                # 🌟 將來源標籤寫入 DataFrame 中
+                df['Data_Source'] = data_source
+                
+                df = df[['Open', 'High', 'Low', 'Close', 'Volume', 'Data_Source']]
+                df = df.dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
+                
+                if len(df) < 20:
                     return pd.DataFrame()
-
-            # 4. 欄位清洗與標籤注入
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-            if 'Adj Close' in df.columns:
-                df = df.drop('Adj Close', axis=1)
+                    
+                return df
                 
-            # 🌟 將來源標籤寫入 DataFrame 中
-            df['Data_Source'] = data_source
-            
-            df = df[['Open', 'High', 'Low', 'Close', 'Volume', 'Data_Source']]
-            df = df.dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
-            
-            if len(df) < 20:
+            except Exception as e:
+                logger.error(f"Failed to fetch data for {stock_id}: {e}")
                 return pd.DataFrame()
-                
-            return df
-            
-        except Exception as e:
-            logger.error(f"Failed to fetch data for {stock_id}: {e}")
-            return pd.DataFrame()
 
 class ScanLogWriter:
     """用於寫入掃描日誌的類別"""
