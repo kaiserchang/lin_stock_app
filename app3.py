@@ -546,7 +546,7 @@ if current_cache:
         if data_list:
             df_out = pd.DataFrame(data_list).set_index('代碼')
             # 【修正3】強制套用欄位順序
-            df_out = df_out[desired_cols]
+            df_out = df_out.reindex(columns=desired_cols, fill_value='未知')
             styled_out = df_out.style.format(format_dict).apply(highlight_signals, axis=1)
             st.dataframe(styled_out, use_container_width=True)
 
@@ -570,7 +570,7 @@ if current_cache:
             if buy_list:
                 df_buy = pd.DataFrame(buy_list).set_index('代碼')
                 # 【修正3】強制套用欄位順序
-                df_buy = df_buy[desired_cols]
+                df_buy = df_buy.reindex(columns=desired_cols, fill_value='未知')
                 styled_buy = df_buy.style.format(format_dict).apply(highlight_signals, axis=1)
                 st.dataframe(styled_buy, use_container_width=True)
 
@@ -593,7 +593,7 @@ if current_cache:
             if sell_list:
                 df_sell = pd.DataFrame(sell_list).set_index('代碼')
                 # 【修正3】強制套用欄位順序
-                df_sell = df_sell[desired_cols]
+                df_sell = df_sell.reindex(columns=desired_cols, fill_value='未知')
                 styled_sell = df_sell.style.format(format_dict).apply(highlight_signals, axis=1)
                 st.dataframe(styled_sell, use_container_width=True)
 
