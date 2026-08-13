@@ -41,8 +41,8 @@
 
 1. **複製專案 (Clone the repository)**
    ```bash
-   git clone [https://github.com/您的帳號/您的專案名稱.git](https://github.com/您的帳號/您的專案名稱.git)
-   cd 您的專案名稱
+   git clone [https://github.com/kaiserchang/lin_stock_app.git](https://github.com/kaiserchang/lin_stock_app.git)
+   cd lin_stock_app
    ```
 2. **建立並啟動虛擬環境**
    ```bash
