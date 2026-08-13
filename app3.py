@@ -401,7 +401,7 @@ if analyze_btn or resume_btn:
                         '季線(MA60)': latest['MA60'],
                         '最新形態': formatted_signal,
                         '推薦分數': score,
-                        '季線之上': "✅" if above_ma60 else "❌"
+                        '季線之上': "✅" if above_ma60 else "❌",
                         '資料來源': df['Data_Source'].iloc[-1] if 'Data_Source' in df.columns else '未知',
                     }
             except Exception as e:
