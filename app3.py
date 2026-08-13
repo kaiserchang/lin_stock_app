@@ -200,7 +200,8 @@ if 'scan_results' not in st.session_state:
                     st.session_state.scan_results[mode] = {
                         "type": "single",
                         "data": df_cached.to_dict('records'),
-                        "date": meta_data.get("date", "未知日期")
+                        "date": meta_data.get("date", "未知日期"),
+                        "failed_logs": meta_data.get("failed_logs", [])  # 👈 新增這行 (記得上一行要加逗號)
                     }
                 else:
                     buy_df_path = csv_path.replace(".csv", "_buy.csv")
@@ -213,7 +214,8 @@ if 'scan_results' not in st.session_state:
                         "type": "split",
                         "buy": buy_data,
                         "sell": sell_data,
-                        "date": meta_data.get("date", "未知日期")
+                        "date": meta_data.get("date", "未知日期"),
+                        "failed_logs": meta_data.get("failed_logs", [])  # 👈 新增這行 (記得上一行要加逗號)
                     }
             except Exception as e:
                 pass
@@ -468,17 +470,14 @@ if analyze_btn or resume_btn:
         # 👇 新增：順利完成全部掃描後，自動刪除備份檔，避免下次再跳出警告 👇
         if completed_count == total_stocks and os.path.exists("backup_temp_results.csv"):
             os.remove("backup_temp_results.csv")
-    
-        # 將失敗日誌存入跨頁面的長期記憶體中，無論有無失敗都覆寫，以清除舊紀錄
-        st.session_state.current_failed_logs = failed_logs
 
         # 【關鍵修復】：根據當前 scan_mode 動態更新正確的 Cache 與 Session State
         curr_csv = CACHE_FILES[scan_mode]
         curr_meta = META_FILES[scan_mode]
         
-        # 1. 更新 metadata 時間戳記
+        # 1. 更新 metadata 時間戳記與失敗日誌
         with open(curr_meta, 'w', encoding='utf-8') as mf:
-            json.dump({"date": scan_date_str}, mf, ensure_ascii=False)
+            json.dump({"date": scan_date_str, "failed_logs": failed_logs}, mf, ensure_ascii=False)
 
         # 2. 依據模式類型寫入快取與更新 Session State
         if "模式 A" in scan_mode or "模式 D" in scan_mode:
@@ -486,19 +485,17 @@ if analyze_btn or resume_btn:
             st.session_state.scan_results[scan_mode] = {
                 "type": "single",
                 "data": all_results,
-                "date": scan_date_str
+                "date": scan_date_str,
+                "failed_logs": failed_logs  # 👈 新增這行
             }
         else:
-            buy_csv = curr_csv.replace(".csv", "_buy.csv")
-            sell_csv = curr_csv.replace(".csv", "_sell.csv")
-            pd.DataFrame(buy_signals).to_csv(buy_csv, index=False)
-            pd.DataFrame(sell_signals).to_csv(sell_csv, index=False)
-            pd.DataFrame(all_results).to_csv(curr_csv, index=False)
+            # ...(略)...
             st.session_state.scan_results[scan_mode] = {
                 "type": "split",
                 "buy": buy_signals,
                 "sell": sell_signals,
-                "date": scan_date_str
+                "date": scan_date_str,
+                "failed_logs": failed_logs  # 👈 新增這行
             }
 
         status_text.success("🎉 掃描完成！正在更新報表...")
@@ -527,12 +524,12 @@ format_dict = {'收盤價': '{:.2f}', '成交量': '{:,}', '季線(MA60)': '{:.2
 # 【修正2】定義期望的欄位顯示順序
 desired_cols = ['名稱', '收盤價', '成交量', '最新形態', '推薦分數', '季線(MA60)', '季線之上', '資料來源']
 
-# 👇 破除黑箱：在網頁重新整理後，從保險箱提取並將失敗日誌顯示出來 👇
-if st.session_state.get("current_failed_logs"):
-    with st.expander(f"⚠️ 共有 {len(st.session_state.current_failed_logs)} 檔股票掃描失敗 (點擊展開查看原因)", expanded=True):
-        st.dataframe(pd.DataFrame(st.session_state.current_failed_logs), use_container_width=True)
-
 current_cache = st.session_state.scan_results.get(scan_mode, None)
+
+# 👇 破除黑箱：從各模式專屬的保險箱提取失敗日誌 👇
+if current_cache and current_cache.get("failed_logs"):
+    with st.expander(f"⚠️ 共有 {len(current_cache['failed_logs'])} 檔股票掃描失敗 (點擊展開查看原因)", expanded=True):
+        st.dataframe(pd.DataFrame(current_cache['failed_logs']), use_container_width=True)
 
 if current_cache:
     scan_time = current_cache.get("date", "未知時間")
