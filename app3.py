@@ -402,10 +402,14 @@ if analyze_btn or resume_btn:
                         '最新形態': formatted_signal,
                         '推薦分數': score,
                         '季線之上': "✅" if above_ma60 else "❌"
+                        '資料來源': df['Data_Source'].iloc[-1] if 'Data_Source' in df.columns else '未知',
                     }
-            except Exception:
-                pass
-            return None
+            except Exception as e:
+                # 捕捉具體錯誤原因回傳
+                return {"代碼": stock_id, "狀態": "失敗", "原因": f"程式執行錯誤: {str(e)}"}
+
+            # 若執行到最後都沒有成功進到 return 字典，代表沒抓到資料
+            return {"代碼": stock_id, "狀態": "失敗", "原因": "API無回傳資料或日線不足20天"}
 
         # 多執行緒併發處理
         all_results = []
@@ -423,23 +427,28 @@ if analyze_btn or resume_btn:
         progress_bar = st.progress(0)
         status_text = st.empty()
         save_status = st.empty()
-
+        failed_logs = []
+        
         # 啟動多執行緒掃描
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             futures = {executor.submit(process_single_stock, sid): sid for sid in target_stocks}
-    
+            
             for future in concurrent.futures.as_completed(futures):
                 sid = futures[future]
                 try:
                     res = future.result()
-                    # 保留你原本的買賣訊號分類邏輯
                     if res:
-                        all_results.append(res)
-                        if res.get('推薦分數', 0) > 0:
-                            buy_signals.append(res)
+                        # 🌟 破除黑箱：將失敗紀錄與成功紀錄分流
+                        if res.get("狀態") == "失敗":
+                            failed_logs.append(res)
                         else:
-                            sell_signals.append(res)
+                            all_results.append(res)
+                            if res.get('推薦分數', 0) > 0:
+                                buy_signals.append(res)
+                            else:
+                                sell_signals.append(res)
                 except Exception as e:
+                    failed_logs.append({"代碼": sid, "狀態": "失敗", "原因": f"執行緒崩潰: {e}"})
                     print(f"股票 {sid} 處理失敗: {e}")
 
                 # 1. 即時更新進度條 (防止雲端判定閒置而強制中斷)
@@ -459,6 +468,11 @@ if analyze_btn or resume_btn:
         # 👇 新增：順利完成全部掃描後，自動刪除備份檔，避免下次再跳出警告 👇
         if completed_count == total_stocks and os.path.exists("backup_temp_results.csv"):
             os.remove("backup_temp_results.csv")
+    
+        # 👇 新增：在畫面上方顯示黑箱除錯日誌 👇
+        if failed_logs:
+            with st.expander(f"⚠️ 共有 {len(failed_logs)} 檔股票掃描失敗 (點擊展開查看原因)"):
+                st.dataframe(pd.DataFrame(failed_logs), use_container_width=True)
 
         # 【關鍵修復】：根據當前 scan_mode 動態更新正確的 Cache 與 Session State
         curr_csv = CACHE_FILES[scan_mode]
