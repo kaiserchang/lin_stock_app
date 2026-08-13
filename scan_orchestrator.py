@@ -215,85 +215,64 @@ class TaiwanStockDataFetcher:
         logger.info(f"Using stock list with {len(fallback_stocks)} stocks")
         return pd.DataFrame(fallback_stocks)
 
-    def get_stock_daily_data(self, stock_id, start_date, end_date):
-        """獲取股票日線數據，使用 yfinance（快速且穩定）"""
+def get_stock_daily_data(self, stock_id, start_date, end_date):
+        """獲取股票日線數據，支援動態後綴與來源標籤"""
         try:
-            logger.info(f"Fetching data for {stock_id} from {start_date} to {end_date} using yfinance")
+            # 1. 切除中文，確保只有數字代碼 (過濾 '4931 新盛力' -> '4931')
+            stock_id = str(stock_id).split()[0]
+            logger.info(f"Fetching data for {stock_id} from {start_date} to {end_date}")
             
-            # 台股代碼需要加上 .TW 後綴
-            ticker = f"{stock_id}.TW"
-            
-            # 建立自訂 session，避免 yfinance 被 Yahoo 封鎖
             session = requests.Session()
             session.trust_env = False
             session.headers.update({
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 "Accept-Language": "en-US,en;q=0.9",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             })
             
-            # 使用 yfinance 獲取數據，包含重試機制
             df = pd.DataFrame()
-            yfinance_error = None
-            for attempt in range(1, 5):
-                try:
-                    df = yf.download(
-                        ticker,
-                        start=start_date,
-                        end=end_date,
-                        progress=False,
-                        threads=False,
-                        session=session,
-                    )
-                    if not df.empty and len(df) > 0:
-                        break
-                    logger.warning(f"Attempt {attempt} returned empty DataFrame for {ticker}")
-                except Exception as e:
-                    yfinance_error = e
-                    logger.warning(f"Attempt {attempt} failed for {ticker}: {e}")
-                    time.sleep(2 * attempt)
+            data_source = "Yahoo" # 預設來源標籤
+            
+            # 2. 雙棲嘗試：先上市(.TW)，後上櫃(.TWO)
+            for suffix in [".TW", ".TWO"]:
+                ticker = f"{stock_id}{suffix}"
+                for attempt in range(1, 4):
+                    try:
+                        df = yf.download(ticker, start=start_date, end=end_date, progress=False, threads=False, session=session)
+                        if not df.empty and len(df) > 0:
+                            break
+                    except Exception:
+                        time.sleep(1)
+                if not df.empty and len(df) > 0:
+                    break
 
+            # 3. 備援機制：如果 Yahoo 徹底失敗，改叫 TWSE
             if df.empty or len(df) == 0:
-                if yfinance_error is not None:
-                    logger.warning(
-                        f"No data fetched for {stock_id} from Yahoo, switching to TWSE fallback; "
-                        f"last yfinance exception: {type(yfinance_error).__name__}: {yfinance_error}"
-                    )
-                else:
-                    logger.warning(
-                        f"No data fetched for {stock_id} from Yahoo (empty result), switching to TWSE fallback"
-                    )
+                logger.warning(f"Yahoo failed for {stock_id}, switching to TWSE fallback.")
                 df = self.get_stock_daily_data_twse(stock_id, start_date, end_date)
+                data_source = "TWSE" # 更改來源標籤為證交所
+                
                 if df.empty or len(df) == 0:
-                    logger.warning(f"No fallback data fetched for {stock_id}")
                     return pd.DataFrame()
 
-            # 標準化列名
-            # 况一：yfinance 返回 MultiIndex 列名
+            # 4. 欄位清洗與標籤注入
             if isinstance(df.columns, pd.MultiIndex):
-                # 取第一層（列名）
                 df.columns = df.columns.get_level_values(0)
-            
-            # 確保有所有必需的列
             if 'Adj Close' in df.columns:
                 df = df.drop('Adj Close', axis=1)
+                
+            # 🌟 將來源標籤寫入 DataFrame 中
+            df['Data_Source'] = data_source
             
-            # 重新排序列，確保順序正確
-            df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
-            
-            # 移除 NaN 值
-            df = df.dropna()
+            df = df[['Open', 'High', 'Low', 'Close', 'Volume', 'Data_Source']]
+            df = df.dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
             
             if len(df) < 20:
-                logger.warning(f"Insufficient data for {stock_id}: {len(df)} rows (need 20)")
                 return pd.DataFrame()
-            
-            logger.info(f"Successfully fetched {len(df)} days of data for {stock_id} from yfinance")
+                
             return df
+            
         except Exception as e:
-            logger.error(f"Failed to fetch data for {stock_id} from yfinance: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
+            logger.error(f"Failed to fetch data for {stock_id}: {e}")
             return pd.DataFrame()
 
 class ScanLogWriter:
@@ -424,107 +403,96 @@ def parse_csv_data(csv_file_path, stock_id=None):
         return pd.DataFrame()
 
 def run_market_scan(params):
-    fetcher = TaiwanStockDataFetcher()
-    stock_list_df = fetcher.get_taiwan_stock_list()
-
-    if stock_list_df.empty:
-        return {"status": "error", "message": "Failed to get stock list."}
-
-    scan_limit = params.get("scan_limit")
-    if scan_limit:
-        stock_list_df = stock_list_df.head(scan_limit)
-
-    today = datetime.now()
-    start_date_str = params.get("start_date_str", (today - timedelta(days=120)).strftime('%Y-%m-%d'))
-    end_date_str = params.get("end_date_str", today.strftime('%Y-%m-%d'))
-    signal_filter = params.get("signal_filter", [])
-    session_id = params.get("session_id")
-
-    # 初始化日誌寫入器
-    log_writer = ScanLogWriter(session_id) if session_id else None
-
-    recommendations = []
-    total_scanned = 0
-    failed_count = 0
-
-    for i, row in stock_list_df.iterrows():
-        stock_id = row.get("stock_id") or row.get("code")
-        stock_name = row.get("stock_name") or row.get("name")
-        industry = row.get("industry_category") or row.get("industry") or "未分類"
-
-        try:
-            # 記錄掃描開始
-            if log_writer:
-                log_writer.write_log(stock_id, stock_name, "scanning", message="正在獲取數據...")
-
-            df_daily = fetcher.get_stock_daily_data(stock_id, start_date_str, end_date_str)
-            if df_daily.empty or len(df_daily) < 20:  # 至少需要20天數據
-                logger.info(f"Skipping {stock_id} due to insufficient data (need 20 days, got {len(df_daily)})")
+        fetcher = TaiwanStockDataFetcher()
+        stock_list_df = fetcher.get_taiwan_stock_list()
+        
+        if stock_list_df.empty:
+            return {"status": "error", "message": "Failed to get stock list."}
+            
+        scan_limit = params.get("scan_limit")
+        if scan_limit:
+            stock_list_df = stock_list_df.head(scan_limit)
+            
+        today = datetime.now()
+        start_date_str = params.get("start_date_str", (today - timedelta(days=120)).strftime('%Y-%m-%d'))
+        end_date_str = params.get("end_date_str", today.strftime('%Y-%m-%d'))
+        signal_filter = params.get("signal_filter", [])
+        session_id = params.get("session_id")
+        
+        log_writer = ScanLogWriter(session_id) if session_id else None
+        recommendations = []
+        total_scanned = 0
+        failed_count = 0
+        
+        for i, row in stock_list_df.iterrows():
+            stock_id = row.get("stock_id") or row.get("code")
+            stock_name = row.get("stock_name") or row.get("name")
+            industry = row.get("industry_category") or row.get("industry") or "未分類"
+            
+            try:
                 if log_writer:
-                    log_writer.write_log(stock_id, stock_name, "failed", message="數據不足（少於20天）")
-                failed_count += 1
-                continue
-
-            # 記錄分析開始
-            if log_writer:
-                log_writer.write_log(stock_id, stock_name, "scanning", message="正在分析技術訊號...")
-
-            engine = LinJiaYangEngine(df_daily)
-            analysis_result = engine.run_analysis()
-
-            latest_signal = analysis_result.iloc[-1]
-            signal_type = latest_signal["Signal"]
-            above_ma60 = bool(latest_signal["Above_MA60"])
-            recommendation_score = int(latest_signal.get("RecommendationScore", 0))
-
-            if signal_type != "無":
-                if not signal_filter or signal_type in signal_filter:
-                    recommendations.append({
-                        "stockId": stock_id,
-                        "stockName": stock_name,
-                        "industry": industry,
-                        "closePrice": float(latest_signal["Close"]),
-                        "signalType": signal_type,
-                        "aboveMa60": above_ma60,
-                        "recommendationScore": recommendation_score,
-                        "scanDate": latest_signal.name.strftime('%Y-%m-%d')
-                    })
+                    log_writer.write_log(stock_id, stock_name, "scanning", message="正在獲取數據...")
                     
-                    # 記錄發現訊號
+                df_daily = fetcher.get_stock_daily_data(stock_id, start_date_str, end_date_str)
+                
+                if df_daily.empty or len(df_daily) < 20: 
                     if log_writer:
-                        log_writer.write_log(stock_id, stock_name, "completed", signal_type=signal_type, message=f"發現訊號：{signal_type}")
+                        log_writer.write_log(stock_id, stock_name, "failed", message="數據不足（少於20天）")
+                    failed_count += 1
+                    continue
+                    
+                # 🌟 取出我們剛剛在 DataFrame 埋入的來源標籤 
+                source_label = df_daily['Data_Source'].iloc[-1] if 'Data_Source' in df_daily.columns else "未知"
+                
+                engine = LinJiaYangEngine(df_daily)
+                analysis_result = engine.run_analysis()
+                
+                latest_signal = analysis_result.iloc[-1]
+                signal_type = latest_signal["Signal"]
+                above_ma60 = bool(latest_signal["Above_MA60"])
+                recommendation_score = int(latest_signal.get("RecommendationScore", 0))
+                
+                if signal_type != "無":
+                    if not signal_filter or signal_type in signal_filter:
+                        recommendations.append({
+                            "stockId": stock_id,
+                            "stockName": stock_name,
+                            "industry": industry,
+                            "closePrice": float(latest_signal["Close"]),
+                            "signalType": signal_type,
+                            "aboveMa60": above_ma60,
+                            "recommendationScore": recommendation_score,
+                            "scanDate": latest_signal.name.strftime('%Y-%m-%d'),
+                            "dataSource": source_label  # 👈 新增欄位：將來源擴充並傳遞給前端網頁
+                        })
+                        if log_writer:
+                            log_writer.write_log(stock_id, stock_name, "completed", signal_type=signal_type, message=f"發現訊號：{signal_type}")
                 else:
-                    # 記錄訊號被過濾
                     if log_writer:
-                        log_writer.write_log(stock_id, stock_name, "completed", signal_type=signal_type, message="訊號被過濾")
-            else:
-                # 記錄無訊號
+                        log_writer.write_log(stock_id, stock_name, "completed", message="無技術訊號")
+                        
+                total_scanned += 1
+                
+            except Exception as e:
+                logger.error(f"Error analyzing {stock_id}: {e}")
                 if log_writer:
-                    log_writer.write_log(stock_id, stock_name, "completed", message="無技術訊號")
-
-            total_scanned += 1
-
-        except Exception as e:
-            logger.error(f"Error analyzing {stock_id}: {e}")
-            if log_writer:
-                log_writer.write_log(stock_id, stock_name, "failed", message=f"分析失敗：{str(e)}")
-            failed_count += 1
-
-        progress = int(((i + 1) / len(stock_list_df)) * 100)
-        print(f"PROGRESS:{progress}")  # 透過 stdout 回報進度
-        sys.stdout.flush()  # 確保立即輸出
-
-    # 確保所有日誌都被寫入
-    if log_writer:
-        log_writer.flush_all()
-
-    return {
-        "status": "success",
-        "totalScannedStocks": total_scanned,
-        "recommendationCount": len(recommendations),
-        "failedCount": failed_count,
-        "recommendations": recommendations
-    }
+                    log_writer.write_log(stock_id, stock_name, "failed", message=f"分析失敗：{str(e)}")
+                failed_count += 1
+                
+            progress = int(((i + 1) / len(stock_list_df)) * 100)
+            print(f"PROGRESS:{progress}")  
+            sys.stdout.flush() 
+            
+        if log_writer:
+            log_writer.flush_all()
+            
+        return {
+            "status": "success",
+            "totalScannedStocks": total_scanned,
+            "recommendationCount": len(recommendations),
+            "failedCount": failed_count,
+            "recommendations": recommendations
+        }
 
 def get_stock_kline_data(stock_id, start_date_str, end_date_str):
     fetcher = TaiwanStockDataFetcher()
