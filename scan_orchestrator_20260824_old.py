@@ -475,7 +475,7 @@ def run_market_scan(params):
             
         today = datetime.now()
         start_date_str = params.get("start_date_str", (today - timedelta(days=120)).strftime('%Y-%m-%d'))
-        end_date_str = params.get("end_date_str", (today + timedelta(days=1)).strftime('%Y-%m-%d'))
+        end_date_str = params.get("end_date_str", today.strftime('%Y-%m-%d'))
         signal_filter = params.get("signal_filter", [])
         session_id = params.get("session_id")
         
