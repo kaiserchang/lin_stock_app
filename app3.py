@@ -377,7 +377,8 @@ if analyze_btn or resume_btn:
         # 👈 以下接續原有的時區設定與 fetcher 宣告
         tz_taipei = zoneinfo.ZoneInfo("Asia/Taipei")
         scan_date_str = datetime.now(tz_taipei).strftime('%Y-%m-%d %H:%M')
-        end_date_str = datetime.now(tz_taipei).strftime('%Y-%m-%d')
+        # 修改後 (加上 timedelta(days=1))
+        end_date_str = (datetime.now(tz_taipei) + timedelta(days=1)).strftime('%Y-%m-%d')
         start_date_str = (datetime.now(tz_taipei) - timedelta(days=120)).strftime('%Y-%m-%d')
         fetcher = TaiwanStockDataFetcher()
 
