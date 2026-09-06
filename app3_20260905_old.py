@@ -32,7 +32,7 @@ META_FILES = {
 }
 
 TW50_MAPPING = {
-    "0050": "元大台灣50", "1101": "台泥", "1216": "統一", "1301": "台塑", "1303": "南亞", "1326": "台化",
+    "1101": "台泥", "1216": "統一", "1301": "台塑", "1303": "南亞", "1326": "台化",
     "1590": "亞德客-KY", "2002": "中鋼", "2207": "和泰車", "2301": "光寶科", "2303": "聯電",
     "2308": "台達電", "2317": "鴻海", "2327": "國巨", "2330": "台積電", "2345": "智邦",
     "2353": "宏碁", "2357": "華碩", "2379": "瑞昱", "2382": "廣達", "2385": "群光",
@@ -201,10 +201,7 @@ if 'scan_results' not in st.session_state:
                         "type": "single",
                         "data": df_cached.to_dict('records'),
                         "date": meta_data.get("date", "未知日期"),
-                        "market_data_date": meta_data.get("market_data_date", "歷史交易日"),
-                        "source": "cache",  # 標記為快取載入
-                        "failed_logs": meta_data.get("failed_logs", []),
-                        "market_status": meta_data.get("market_status", None)
+                        "failed_logs": meta_data.get("failed_logs", [])  # 👈 新增這行 (記得上一行要加逗號)
                     }
                 else:
                     buy_df_path = csv_path.replace(".csv", "_buy.csv")
@@ -218,57 +215,15 @@ if 'scan_results' not in st.session_state:
                         "buy": buy_data,
                         "sell": sell_data,
                         "date": meta_data.get("date", "未知日期"),
-                        "market_data_date": meta_data.get("market_data_date", "歷史交易日"),
-                        "source": "cache",  # 標記為快取載入
-                        "failed_logs": meta_data.get("failed_logs", []),
-                        "market_status": meta_data.get("market_status", None)
+                        "failed_logs": meta_data.get("failed_logs", [])  # 👈 新增這行 (記得上一行要加逗號)
                     }
             except Exception as e:
                 pass
-
-
-@st.cache_data(ttl=1800)
-def get_market_regime():
-    """獲取台股加權指數 (^TWII) 月線與季線狀態，判定大盤環境燈號 (2026-09-05 新增)"""
-    try:
-        import yfinance as yf
-        tz_taipei = zoneinfo.ZoneInfo("Asia/Taipei")
-        end_d = (datetime.now(tz_taipei) + timedelta(days=1)).strftime('%Y-%m-%d')
-        start_d = (datetime.now(tz_taipei) - timedelta(days=120)).strftime('%Y-%m-%d')
-        df_twii = yf.download("^TWII", start=start_d, end=end_d, progress=False)
-        if df_twii.empty: return None
-        if isinstance(df_twii.columns, pd.MultiIndex):
-            df_twii.columns = df_twii.columns.get_level_values(0)
-        df_twii['MA20'] = df_twii['Close'].rolling(window=20).mean()
-        df_twii['MA60'] = df_twii['Close'].rolling(window=60).mean()
-        latest = df_twii.iloc[-1]
-        prev = df_twii.iloc[-2] if len(df_twii) >= 2 else latest
-        
-        close = float(latest['Close'])
-        prev_close = float(prev['Close'])
-        ma20 = float(latest['MA20'])
-        ma60 = float(latest['MA60'])
-        pct = float(((close - prev_close) / prev_close) * 100)
-        
-        if close < ma20 or pct <= -1.0:
-            status = "BEAR_DEFENSE"
-            msg = f"加權指數收 {close:,.1f}點 (漲跌 {pct:+.2f}%)，實體跌破 20MA月線 ({ma20:,.1f}點)！系統啟動「空頭避險開關」，強烈建議今日 100% 空手觀望，強制關閉 TOP 5 追價買單！"
-        elif close >= ma20 and close >= ma60:
-            status = "BULL_NORMAL"
-            msg = f"加權指數收 {close:,.1f}點 (漲跌 {pct:+.2f}%)，穩居月線 ({ma20:,.1f}點) 與季線 ({ma60:,.1f}點) 之上，多頭順風，可依準則順勢佈局！"
-        else:
-            status = "NEUTRAL"
-            msg = f"加權指數收 {close:,.1f}點，處於月線與季線震盪整理區，建議縮小部位、嚴選低乖離起漲標的。"
-            
-        return {'close': close, 'ma20': ma20, 'ma60': ma60, 'pct': pct, 'status': status, 'msg': msg}
-    except Exception as e:
-        return None
 
 # ==========================================
 # 4. 網頁 UI 與 4 大模式切換
 # ==========================================
 st.title("📡 林家洋技術分析 - 全市場掃描雷達")
-
 
 tw50_list = list(TW50_MAPPING.keys())
 target_stocks = []
@@ -375,27 +330,9 @@ if os.path.exists("backup_temp_results.csv"):
         st.sidebar.download_button("📥 先下載目前已備份進度 (CSV)", f, file_name="中斷備份檔.csv", width="stretch")
 
 st.sidebar.markdown("---") 
-if st.sidebar.button("🧹 強制清除系統快取", width="stretch"):
+if st.sidebar.button("🧹 強制清除系統快取"):
     st.cache_data.clear()
-    st.session_state.scan_results = {}
-    
-    # 徹底刪除硬碟上的所有快取與備份檔案
-    for mode, csv_f in CACHE_FILES.items():
-        for f_path in [csv_f, csv_f.replace(".csv", "_buy.csv"), csv_f.replace(".csv", "_sell.csv")]:
-            if os.path.exists(f_path):
-                try: os.remove(f_path)
-                except: pass
-    for mode, meta_f in META_FILES.items():
-        if os.path.exists(meta_f):
-            try: os.remove(meta_f)
-            except: pass
-    if os.path.exists("backup_temp_results.csv"):
-        try: os.remove("backup_temp_results.csv")
-        except: pass
-        
-    st.sidebar.success("✅ 所有本機與記憶體快取已徹底清除！")
-    time.sleep(0.5)
-    st.rerun()
+    st.sidebar.success("快取已清除！請按 F5 重新整理網頁。")
 
 # 定義承接資料的容器
 all_results = []
@@ -440,7 +377,7 @@ if analyze_btn or resume_btn:
         # 👈 以下接續原有的時區設定與 fetcher 宣告
         tz_taipei = zoneinfo.ZoneInfo("Asia/Taipei")
         scan_date_str = datetime.now(tz_taipei).strftime('%Y-%m-%d %H:%M')
-        # 🌟 關鍵修復：yfinance 的 end 參數為 Exclusive (不包含該日)，因此必須 +1 天才能正確抓取今日最新收盤資料！
+        # 修改後 (加上 timedelta(days=1))
         end_date_str = (datetime.now(tz_taipei) + timedelta(days=1)).strftime('%Y-%m-%d')
         start_date_str = (datetime.now(tz_taipei) - timedelta(days=120)).strftime('%Y-%m-%d')
         fetcher = TaiwanStockDataFetcher()
@@ -459,7 +396,6 @@ if analyze_btn or resume_btn:
                     above_ma60 = latest['Above_MA60']
                     formatted_signal = get_formatted_signal(score, raw_signal, above_ma60)
                     
-                    market_date_val = str(df.index[-1]).split(' ')[0] if len(df) > 0 else '未知'
                     return {
                         '代碼': stock_id,
                         '名稱': stock_name if stock_name else "-",
@@ -470,7 +406,6 @@ if analyze_btn or resume_btn:
                         '推薦分數': score,
                         '季線之上': "✅" if above_ma60 else "❌",
                         '資料來源': df['Data_Source'].iloc[-1] if 'Data_Source' in df.columns else '未知',
-                        '行情日期': market_date_val
                     }
             except Exception as e:
                 # 捕捉具體錯誤原因回傳
@@ -541,109 +476,84 @@ if analyze_btn or resume_btn:
         curr_csv = CACHE_FILES[scan_mode]
         curr_meta = META_FILES[scan_mode]
         
-        # 1. 取得本次掃描獲取之市場行情基準日
-        latest_market_date = "未知交易日"
-        if all_results and '行情日期' in all_results[0]:
-            latest_market_date = all_results[0]['行情日期']
-        elif all_results and len(all_results) > 0:
-            latest_market_date = "最新盤後結算"
-
-        # 2. 更新 metadata 時間戳記、數據基準日與失敗日誌
+        # 1. 更新 metadata 時間戳記與失敗日誌
         with open(curr_meta, 'w', encoding='utf-8') as mf:
-            scan_market_status = get_market_regime()
-            json.dump({
-                "date": scan_date_str,
-                "market_data_date": latest_market_date,
-                "failed_logs": failed_logs,
-                "market_status": scan_market_status
-            }, mf, ensure_ascii=False)
+            json.dump({"date": scan_date_str, "failed_logs": failed_logs}, mf, ensure_ascii=False)
 
-        # 3. 依據模式類型寫入快取與更新 Session State (標記 source='fresh')
+        # 2. 依據模式類型寫入快取與更新 Session State
         if "模式 A" in scan_mode or "模式 D" in scan_mode:
-            pd.DataFrame(all_results).to_csv(curr_csv, index=False, encoding="utf-8-sig")
+            pd.DataFrame(all_results).to_csv(curr_csv, index=False)
             st.session_state.scan_results[scan_mode] = {
                 "type": "single",
                 "data": all_results,
                 "date": scan_date_str,
-                "market_data_date": latest_market_date,
-                "source": "fresh",  # 🌟 剛掃描完成標記為全新即時
-                "failed_logs": failed_logs,
-                "market_status": scan_market_status
+                "failed_logs": failed_logs  # 👈 新增這行
             }
         else:
-            buy_df_path = curr_csv.replace(".csv", "_buy.csv")
-            sell_df_path = curr_csv.replace(".csv", "_sell.csv")
-            pd.DataFrame(all_results).to_csv(curr_csv, index=False, encoding="utf-8-sig")
-            pd.DataFrame(buy_signals).to_csv(buy_df_path, index=False, encoding="utf-8-sig")
-            pd.DataFrame(sell_signals).to_csv(sell_df_path, index=False, encoding="utf-8-sig")
-            
+            # ...(略)...
             st.session_state.scan_results[scan_mode] = {
                 "type": "split",
                 "buy": buy_signals,
                 "sell": sell_signals,
                 "date": scan_date_str,
-                "market_data_date": latest_market_date,
-                "source": "fresh",  # 🌟 剛掃描完成標記為全新即時
-                "failed_logs": failed_logs,
-                "market_status": scan_market_status
+                "failed_logs": failed_logs  # 👈 新增這行
             }
 
         status_text.success("🎉 掃描完成！正在更新報表...")
         st.rerun()
 
 # ==========================================
-# 6. 說明折疊面板與結果呈現
+# 6. 說明折疊面板與結果呈現 (2026 TOP 5 實戰風控旗艦版)
 # ==========================================
-with st.expander("📖 林家洋技術分析型態、TOP 5 前置濾網與四大防線戰術指南 (2026 TOP 5 實戰風控旗艦版)", expanded=True):
-    st.markdown('''
+with st.expander("📖 林家洋技術分析型態、TOP 5 前置濾網與四大防線戰術指南 (2026 旗艦版)", expanded=True):
+    st.markdown(r"""
     ### 🎯 一、 五大型態判讀與實戰戰術指引
-    * 🚀 **順勢強攻 (突破高點)**：季線之上的攻擊K線，已突破近 20 日波段高點。
-      * **戰術定位**：主力表態發動訊號。
+    * 🚀 **順勢強攻 (突破高點)**：季線之上的攻擊K線，帶量突破近 20 日波段高點。
+      * **戰術定位**：主力表態發動主升段訊號。
       * **實戰進場檢核**：
-        * ✅ **黃金買點**：近 20 日累積漲幅 <= 15%、季線乖離 <= 12% 之「底部/平台橫盤 10 天以上突破第一根」，勝率最高。
-        * ⚠️ **力竭警戒**：若 20 日漲幅已 > 25% 或季線乖離 > 18%，屬高檔力竭出貨風險區，**嚴禁追高**。
-        * 🚫 **雜魚與一日遊排除**：5 日均量需 >= 800 張，當日成交量需 >= 1,200 張；排除平時無量、單日突兀暴衝 4 倍之隔日沖雜魚股。
-      * **防守停損點**：以 **發動日攻擊K最低點 (Low)** 為唯一基準線 (破線果斷停損)。
-    * 🔥 **多頭反轉 (吞噬賣壓)**：季線之上的多頭吞噬，紅K實體完全包覆前日黑K (60至90 分)。
-      * **戰術定位**：**高勝率起漲轉折訊號 (大數據實證 T+5 勝率達 70.3%)**。回檔洗盤完畢後的轉折點，買點安全且不易隔日跳水！
-    * 🔋 **多頭蓄勢 (蓄力中)**：季線之上的量縮內困型態 (母子線，30 分)。
+        * ✅ **黃金買點**：近 20 日累積漲幅 $\le 15\%$、季線乖離 $\le 12\%$ 之「底部/平台突破第一根」，勝率與爆發力最高。
+        * ⚠️ **力竭警戒**：若 20 日漲幅已 $> 25\%$、5 日漲幅 $> 20\%$ 或季線乖離 $> 18\%$，屬高檔力竭出貨風險區，**一票否決，嚴禁追高**。
+      * **防守停損點**：以**發動日攻擊K最低點（Low）**為唯一基準線（收盤實體破線果斷停損）。
+    * 🔥 **多頭反轉 (吞噬賣壓)**：季線之上的多頭吞噬，紅K實體完全包覆前日黑K。
+      * **戰術定位**：回檔轉折止跌訊號。次日若能補量續強，可視為波段逢低加碼契機。
+    * 🔋 **多頭蓄勢 (蓄力中)**：季線之上的量縮內困型態（母子線）。
       * **戰術定位**：大漲後的籌碼沉澱洗盤，主力並未出貨。耐心等待帶量突破母K高點再行追擊。
-    * ⏳ **弱勢反彈 (空頭壓制)**：季線之下的無量反彈或內困 (15 分)。
+    * ⏳ **弱勢反彈 (空頭壓制)**：季線之下的無量反彈或內困。
       * **戰術定位**：空頭趨勢逃命波，上方均線下彎反壓沉重，**多單絕對禁止進場**。
-    * 💣 **黑K吞噬 (逃命警示)**：長黑K實體完全包覆前日紅K (負分)。
-      * **戰術定位**：觸發第一道/第三道風控防線，多頭防守潰敗，部位果斷停損或停利結案。
+    * 💣 **黑K吞噬 (逃命警示)**：長黑K實體完全包覆前日紅K。
+      * **戰術定位**：**觸發第一道／第三道風控防線**，多頭防守潰敗，部位果斷停損或停利結案。
 
     ---
-
-    ### 🚨 二、 大盤空頭避險開關 (Market Regime Filter)
-    * 🔴 **空頭避險觸發**：當台股加權指數 (^TWII) 收盤 **實體跌破 20MA 月線**，或 **單日長黑重挫 > 1.0%**。
-      * **戰術動作**：**系統啟動強制避險，強烈建議今日 100% 空手觀望，強制關閉所有 TOP 5 追價買單！**
-    * 🟢 **多頭順風**：指數穩居月線 (20MA) 與季線 (60MA) 之上，順勢操作，落實雙軌選股。
-
-    ---
-
-    ### 🛡️ 三、 實戰買進前置 5 大濾網 (TOP 5 雙軌決選模型)
-    1. 🛑 **短線暴衝與力竭過濾**：近 20 日累積漲幅 > 25.0% 或 短線 5 日急漲 > 20.0% ➔ **一票否決**！
-    2. 📏 **季線乖離過濾**：季線正乖離率 > 18.0% ➔ **一票否決** (黃金區間為 +1.0% 至 +12.0%)。
-    3. 🌊 **族群共振加權**：同產業有 2 檔以上同時表態者優先 (TOP 1至TOP 3 必備條件)。
-    4. 📊 **流動性與雜魚門檻**：5 日均量需 >= 800 張，成交量需 >= 1,200 張，成交金額 >= 8,000 萬台幣。
-    5. ⏰ **T+1 分級掛單深度**：09:30 後以「限價 ROD 單」掛單，50元以下掛 1/2 處，50至100元掛 2/3至3/4 處，百元以上考慮零股。
-
-    ---
-
-    ### 🛡️ 四、 實戰持股四大防線 (有狀態出場紀律)
-    1. 🛑 **第一道防線：發動點停損 (-3.5% 停損線)** ➔ 收盤跌破發動日攻擊K最低點，無條件停損結案。
-    2. 📉 **第二道防線：季線 MA60 終極防線** ➔ 實體跌破 60MA 季線，波段趨勢破壞，停損結案。
-    3. 💰 **第三道防線：階梯移動停利** ➔ 獲利拉開達 +5% 至 +8% 以上才啟用移動鎖利；自波段最高點回落 >= 3.0% 獲利了結。
-    4. ⏳ **第四道防線：5 日無動能換股** ➔ 納入滿 5 天且損益在 +-2.5% 停滯、分數歸零，換股操作。
+    ### 🛡️ 二、 實戰買進前置 5 大濾網（TOP 5 決選漏斗模型）
+    1. 🛑 **濾網一：位置與力竭過濾 (Hard Blocker)**：
+       * 20 日波段累積漲幅 $\le 25\%$（排除高檔連噴）。
+       * 近 3 至 5 日短線暴衝 $\le 20\%$（排除垂直暴衝力竭股，如泰鼎-KY）。
+    2. 📏 **濾網二：季線乖離率過濾 (Hard Blocker)**：
+       * 季線正乖離率 $\le 18\%$（最佳黃金區間為 $+1\% \sim +12\%$，超過 18% 一票否決）。
+    3. 🌊 **濾網三：族群共振加權 (Cluster Effect - TOP 1~TOP 3 必備)**：
+       * 同產業／概念股有 2 檔以上同時跳出 🚀 突破（如台塑四寶、大型金控、散裝航運），主力出不了貨，勝率 $\ge 80\%$。
+    4. 📊 **濾網四：流動性與市場熱度**：
+       * 當日成交量 $\ge 2,000$ 張（百元以上高價股 $\ge 800$ 張），成交金額破億，外資投信好進出。
+    5. ⏰ **濾網五：T+1 分級掛單深度 (限價 ROD 守株待兔)**：
+       * **50 元以下中低價股** ➔ 掛發動K棒 **1/2 處**。
+       * **50 至 100 元高價股** ➔ 掛發動K棒 **2/3 ～ 3/4 處**（加深安全墊）。
+       * **100 元以上高價股** ➔ 建議採用零股等額配置，消除資金壓力。
 
     ---
+    ### 🛡️ 三、 實戰持股四大防線（有狀態出場紀律）
+    1. 🛑 **第一道防線（發動點停損）**：收盤若實體跌破發動日攻擊K最低點（約 $-3.5\%$），立即停損結案，**絕不向下攤平**！
+    2. 📉 **第二道防線（季線終極防線）**：實體跌破 60MA 季線，代表中期多頭被破壞，停損出場。
+    3. 💰 **第三道防線（階梯移動停利）**：
+       * 獲利達 $+4\% \sim +5\%$ ➔ **立刻將停損拉至成本價（保本線）**，立於不敗之地！
+       * 自波段最高點回落達 **$3.0\%$** ➔ 觸發獲利了結，鎖住戰果！
+    4. ⏳ **第四道防線（時間動能換股）**：持有超過 5 個交易日無攻擊動能且損益在 $\pm 2.5\%$ 內停滯，平盤或微損換股。
 
-    ### 🔥 五、 實戰下單 3 大鐵律
-    1. 🌊 **雙軌平衡配置**：TOP 5 結合「60至90分高勝率轉折 (勝率70%)」與「100/120分首日強攻 (橫盤10天突破)」。
+    ---
+    ### 🔥 四、 實戰下單 3 大鐵律
+    1. 🌊 **族群共振優先**：同產業有 2 檔以上同時跳出 🚀 時，為當日勝率最高之「**明日實戰 TOP 5**」。
     2. ⏰ **避開開盤追高**：次日 09:00 至 09:30 觀察隔日沖賣壓消化情況，建議於 09:30 至 10:30 以「限價 ROD 單」分批掛單。
     3. 🛑 **破攻擊K低點必砍**：進場後若收盤跌破發動日最低價，無條件停損結案，絕不凹單、絕不把短線變存股！
-    ''')
+    """)
 
 # 【修正1】加上 '成交量': '{:,}' 來啟用千分位分隔符號
 format_dict = {'收盤價': '{:.2f}', '成交量': '{:,}', '季線(MA60)': '{:.2f}', '推薦分數': '{} 分'}
@@ -662,23 +572,7 @@ if current_cache:
     scan_time = current_cache.get("date", "未知時間")
     # 新增這行，將 2026-08-10 19:33 轉換為安全的 2026-08-10_1933
     safe_date = scan_time.replace(":", "").replace(" ", "_")
-        # --- 2026-09-05 新增：與本次掃描時間 100% 同步之大盤環境燈號 ---
-    if current_cache and current_cache.get("market_status"):
-        m_stat = current_cache["market_status"]
-        if m_stat.get("status") == "BEAR_DEFENSE":
-            st.error(f"🚨 **【大盤空頭避險開關：已啟動】** {m_stat.get('msg')}")
-        elif m_stat.get("status") == "BULL_NORMAL":
-            st.success(f"🟢 **【大盤環境：多頭順風】** {m_stat.get('msg')}")
-        else:
-            st.warning(f"🟡 **【大盤環境：震盪整理】** {m_stat.get('msg')}")
-
-    is_fresh = current_cache.get("source") == "fresh"
-    market_data_date = current_cache.get("market_data_date", "最新交易日")
-    
-    if is_fresh:
-        st.success(f"✨ **【全新即時掃描完成】** ｜ 執行掃描時間：`{scan_time}` ｜ 市場數據基準日：`{market_data_date} 盤後結算`")
-    else:
-        st.info(f"📁 **【已自動載入歷史快取】** ｜ 存檔掃描時間：`{scan_time}` ｜ 市場數據基準日：`{market_data_date} 盤後結算`")
+    st.info(f"📅 **本組數據掃描時間**：{scan_time} (已自動載入歷史快取)")
     
     if current_cache["type"] == "single":
         st.subheader(f"📋 {scan_mode.split('：')[0]} 掃描結果 (完整列出)")

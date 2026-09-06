@@ -1,9 +1,6 @@
 import pandas as pd
 import numpy as np
-try:
-    import pandas_ta as ta
-except ImportError:
-    ta = None
+import pandas_ta as ta
 import logging
 
 # 設定日誌
@@ -33,11 +30,6 @@ class LinJiaYangEngine:
         # --- 2026-08-24 新增：近20日累積漲幅% (當日收盤價相較於近20日最低價之漲幅) ---
         self.df['Low20'] = self.df['Low'].rolling(window=20, min_periods=1).min()
         self.df['Gain_20D'] = ((self.df['Close'] - self.df['Low20']) / self.df['Low20'] * 100).round(2)
-        
-        # --- 2026-09-05 修正：先計算 5日均量 (Vol_MA5)，再計算爆量比與成交金額 ---
-        self.df['Vol_MA5'] = self.df['Volume'].rolling(window=5, min_periods=1).mean()
-        self.df['Vol_MA5_Ratio'] = (self.df['Volume'] / self.df['Vol_MA5'].replace(0, 1)).round(2)
-        self.df['Amount_100M'] = ((self.df['Close'] * self.df['Volume']) / 100000000).round(2)
         
         # 計算實體大小與漲跌幅
         self.df['Body'] = self.df['Close'] - self.df['Open']
@@ -79,39 +71,14 @@ class LinJiaYangEngine:
         return cond1 and cond2 and cond3
 
     def is_attack_k(self, idx):
-        """判斷是否為攻擊K線 (2026-09-05 升級：排除一日遊雜魚爆量與高檔力竭)"""
+        """判斷是否為攻擊K線"""
         if idx < 20: return False
         curr = self.df.iloc[idx]
         vol_ma5 = self.df['Volume'].iloc[idx-5:idx].mean()
         
-        # --- 2026-09-05 雜魚與一日遊爆量硬性過濾 (Anti-Junk / Anti-Spike) ---
-        # 門檻1：5日均量需 >= 800張，且當日成交量需 >= 1200張 (自動相容股數與張數)
-        vol_threshold_ma5 = 800 * 1000 if vol_ma5 > 100000 else 800
-        vol_threshold_curr = 1200 * 1000 if curr['Volume'] > 100000 else 1200
-        if vol_ma5 < vol_threshold_ma5 or curr['Volume'] < vol_threshold_curr:
-            return False
-            
-        # 門檻2：當日成交金額需 >= 6000萬台幣
-        turnover = (curr['Close'] * curr['Volume']) if curr['Volume'] > 100000 else (curr['Close'] * curr['Volume'] * 1000)
-        if turnover < 60000000:
-            return False
-            
-        # 門檻3：排除突兀暴衝一日遊 (單日暴增4倍但平時無量)
-        vol_spike_limit = 1500 * 1000 if vol_ma5 > 100000 else 1500
-        if curr['Volume'] > vol_ma5 * 4.0 and vol_ma5 < vol_spike_limit:
-            return False
-            
-        # --- 2026-09-05 首日突破限制 (排除連漲力竭出貨K) ---
-        past_5d = self.df.iloc[idx-5:idx]
-        recent_surges = (past_5d['Pct_Change'] >= 3.0).sum()
-        min_5d = past_5d['Low'].min()
-        gain_5d = ((curr['Close'] - min_5d) / min_5d * 100) if min_5d > 0 else 0
-        if recent_surges >= 2 or gain_5d > 20.0:
-            return False
-
         cond1 = curr['Pct_Change'] >= 3.0 # 漲幅夠大
         cond2 = curr['Body'] > 0          # 紅K
-        cond3 = curr['Volume'] > vol_ma5 * 1.5 # 溫和放量
+        cond3 = curr['Volume'] > vol_ma5 * 1.5 # 量增
         
         # 突破近20日高點
         swing_high_20 = self.df['High'].iloc[idx-20:idx].max()
