@@ -12,14 +12,8 @@ logger = logging.getLogger(__name__)
 
 class LinJiaYangEngine:
     """
-    林家洋技術分析引擎 (2026-09-10 v8.1 旗艦大底破繭版)
-    核心邏輯：
-    1. 力竭原理與K線組合 (多頭吞噬、黑K吞噬、內困型態)
-    2. 【新增】40~60日長期整理出底突破 (Base Consolidation Breakout) 👑
-    3. 下降慣性扭轉突破 (Downtrend Structure Break / CHoCH) ⚡
-    4. 上升趨勢線跌破波段停利 (Upward Trendline Break) ⚠️
-    5. 【新增】上方套牢巨量反壓濾網 (Overhead Supply Filter) 🚫
-    6. 雙軌選股、首日強攻限制、季線乖離與波段漲幅硬性阻斷
+    林家洋技術分析引擎 (2026-09-09 實戰旗艦版)
+    核心邏輯：力竭原理、K線組合、趨勢位置、下降慣性扭轉、攻擊K線、上升趨勢線停利、波段漲幅與乖離濾網
     """
     def __init__(self, df):
         """
@@ -30,21 +24,17 @@ class LinJiaYangEngine:
 
     def _prepare_indicators(self):
         """計算基礎技術指標與實戰前置濾網指標"""
-        # 計算均線群：月線 (MA20)、季線 (MA60)
-        self.df['MA20'] = self.df['Close'].rolling(window=20, min_periods=1).mean()
+        # 計算季線 (60MA) 作為多空分界
         self.df['MA60'] = self.df['Close'].rolling(window=60, min_periods=1).mean()
         
-        # --- 季線乖離率% ---
+        # --- 2026-08-24 新增：季線乖離率% ---
         self.df['MA60_Bias'] = ((self.df['Close'] - self.df['MA60']) / self.df['MA60'] * 100).round(2)
         
-        # --- 均線糾結度% (月線與季線差距比例) ---
-        self.df['MA_Diff_Pct'] = (abs(self.df['MA20'] - self.df['MA60']) / self.df['MA60'] * 100).round(2)
-        
-        # --- 近20日累積漲幅% (當日收盤價相較於近20日最低價之漲幅) ---
+        # --- 2026-08-24 新增：近20日累積漲幅% (當日收盤價相較於近20日最低價之漲幅) ---
         self.df['Low20'] = self.df['Low'].rolling(window=20, min_periods=1).min()
         self.df['Gain_20D'] = ((self.df['Close'] - self.df['Low20']) / self.df['Low20'] * 100).round(2)
         
-        # --- 5日均量 (Vol_MA5)、爆量比與成交金額 ---
+        # --- 2026-09-05 修正：先計算 5日均量 (Vol_MA5)，再計算爆量比與成交金額 ---
         self.df['Vol_MA5'] = self.df['Volume'].rolling(window=5, min_periods=1).mean()
         self.df['Vol_MA5_Ratio'] = (self.df['Volume'] / self.df['Vol_MA5'].replace(0, 1)).round(2)
         self.df['Amount_100M'] = ((self.df['Close'] * self.df['Volume']) / 100000000).round(2)
@@ -88,75 +78,9 @@ class LinJiaYangEngine:
         cond3 = curr['Volume'] <= prev['Volume'] # 量能量縮
         return cond1 and cond2 and cond3
 
-    def is_base_consolidation_breakout(self, idx):
-        """
-        👑 【林家洋核心大底起漲理論】：40~60日長期整理破繭第一根 (Base Consolidation Breakout)
-        前輩心法：「最好的股票還是要有長期整理，然後剛剛開始突破的股票」
-        特徵：
-        1. 時間維度：過去 40~60 個交易日處於打底整理狀態 (基期極低)。
-        2. 空間維度：過去 40 日的高低點振幅狹窄 (箱型震盪 <= 22%)，波動充分收斂。
-        3. 均線糾結：月線 (MA20) 與季線 (MA60) 差距 <= 4.0%，均線走平糾結纏繞。
-        4. 出底第一根：當日實體紅K (>= 2.5%)，成交量放大至 5 日均量 1.8 倍以上 (且 >= 1,200 張)，
-           收盤價實體帶量長紅突破過去 40 日的箱型整理平台最高點！
-        """
-        if idx < 40: return False
-        curr = self.df.iloc[idx]
-        vol_ma5 = self.df['Volume'].iloc[idx-5:idx].mean()
-
-        # 基本流動性門檻 (>= 800張均量, >= 1200張當日量)
-        vol_threshold_ma5 = 800 * 1000 if vol_ma5 > 100000 else 800
-        vol_threshold_curr = 1200 * 1000 if curr['Volume'] > 100000 else 1200
-        if vol_ma5 < vol_threshold_ma5 or curr['Volume'] < vol_threshold_curr:
-            return False
-
-        # 過去 40 天數據 (idx-40:idx)
-        base_period = self.df.iloc[idx-40:idx]
-        high_40 = base_period['High'].max()
-        low_40 = base_period['Low'].min()
-
-        # 1. 箱型振幅收斂檢驗 (振幅 <= 22%)
-        box_amplitude = ((high_40 - low_40) / low_40 * 100) if low_40 > 0 else 999
-        if box_amplitude > 22.0:
-            return False
-
-        # 2. 均線糾結檢驗 (月線與季線差距 <= 4.0%)
-        ma_diff = curr['MA_Diff_Pct']
-        if pd.isna(ma_diff) or ma_diff > 4.0:
-            return False
-
-        # 3. 當日突破條件：實體紅K、漲幅 >= 2.5%、成交量 >= 1.8倍均量、實體收過 40 日箱頂
-        cond1 = curr['Pct_Change'] >= 2.5
-        cond2 = curr['Body'] > 0
-        cond3 = curr['Volume'] >= vol_ma5 * 1.8
-        cond4 = curr['Close'] > high_40
-
-        return cond1 and cond2 and cond3 and cond4
-
-    def has_overhead_supply_wall(self, idx):
-        """
-        🚫 【上方套牢巨量反壓濾網 (Overhead Supply Wall)】
-        防範像定穎投控這類：前波曾遭遇巨量崩跌，上方短期內存在龐大套牢密集區，反彈極易撞牆跳水。
-        """
-        if idx < 40: return False
-        curr = self.df.iloc[idx]
-        lookback = self.df.iloc[max(0, idx-60):idx]
-        max_h = lookback['High'].max()
-        min_l = lookback['Low'].min()
-        
-        # 檢驗前波是否曾有崩跌 > 22%
-        total_drop = (max_h - min_l) / max_h * 100 if max_h > 0 else 0
-        if total_drop > 22.0:
-            half_idx = len(lookback) // 2
-            early_high = lookback.iloc[:half_idx]['High'].max()
-            # 若當前股價仍深陷在早期崩跌平台下方 10%~25%，且近期從最低點急拉超過 12%
-            # 代表這是大跌後的深水區反彈，正逼近上方套牢密集區
-            if curr['Close'] < early_high * 0.90 and curr['Gain_20D'] > 12.0:
-                return True
-        return False
-
     def is_downtrend_reversal_attack(self, idx):
         """
-        ⚡ 【林家洋核心理論】：下降趨勢反轉進場點 (破底翻起漲先鋒)
+        【林家洋核心理論】：下降趨勢反轉進場點 (破底翻起漲先鋒)
         定義：趨勢向下，高點與低點皆傾向越來越低 (Lower Highs & Lower Lows)；
               此時伴隨高成交量實體突破前波反彈高點，打破空方慣性，為絕佳多方進場時機。
         """
@@ -199,12 +123,12 @@ class LinJiaYangEngine:
         return cond1 and cond2 and cond3 and cond4
 
     def is_attack_k(self, idx):
-        """判斷是否為攻擊K線 (2026-09-10 升級：納入上方套牢反壓過濾)"""
+        """判斷是否為攻擊K線 (2026-09-05 升級：排除一日遊雜魚爆量與高檔力竭)"""
         if idx < 20: return False
         curr = self.df.iloc[idx]
         vol_ma5 = self.df['Volume'].iloc[idx-5:idx].mean()
         
-        # --- 雜魚與一日遊爆量硬性過濾 (Anti-Junk / Anti-Spike) ---
+        # --- 2026-09-05 雜魚與一日遊爆量硬性過濾 (Anti-Junk / Anti-Spike) ---
         vol_threshold_ma5 = 800 * 1000 if vol_ma5 > 100000 else 800
         vol_threshold_curr = 1200 * 1000 if curr['Volume'] > 100000 else 1200
         if vol_ma5 < vol_threshold_ma5 or curr['Volume'] < vol_threshold_curr:
@@ -220,16 +144,12 @@ class LinJiaYangEngine:
         if curr['Volume'] > vol_ma5 * 4.0 and vol_ma5 < vol_spike_limit:
             return False
             
-        # --- 首日突破限制 (排除連漲力竭出貨K) ---
+        # --- 2026-09-05 首日突破限制 (排除連漲力竭出貨K) ---
         past_5d = self.df.iloc[idx-5:idx]
         recent_surges = (past_5d['Pct_Change'] >= 3.0).sum()
         min_5d = past_5d['Low'].min()
         gain_5d = ((curr['Close'] - min_5d) / min_5d * 100) if min_5d > 0 else 0
         if recent_surges >= 2 or gain_5d > 20.0:
-            return False
-
-        # --- 【新增】：排除上方沉重套牢巨峰 (防範弱勢反彈撞牆假突破) ---
-        if self.has_overhead_supply_wall(idx):
             return False
 
         cond1 = curr['Pct_Change'] >= 3.0 # 漲幅夠大
@@ -243,7 +163,7 @@ class LinJiaYangEngine:
 
     def is_uptrend_line_break(self, idx):
         """
-        ⚠️ 【林家洋核心理論】：上升趨勢波段停利點
+        【林家洋核心理論】：上升趨勢波段停利點
         定義：上升趨勢之低點連成線（上升趨勢線）被跌破，或跌破前波次低點，多方墊高慣性終結
         """
         if idx < 20: return False
@@ -276,7 +196,7 @@ class LinJiaYangEngine:
         return (break_line or break_prev_low) and is_weak
 
     def calculate_recommendation_score(self, idx):
-        """計算推薦指數 (v8.1 大底突破 120 分頂級權重)"""
+        """計算推薦指數"""
         if idx < 5: return 0
         curr = self.df.iloc[idx]
         signal = curr.get('Signal', '無')
@@ -285,7 +205,6 @@ class LinJiaYangEngine:
             return 30 if curr['Close'] > curr['MA60'] else 15
             
         buy_signal_strength = {
-            '大底破繭 (長期整理突破)': 120, # 👑 最高評分
             '攻擊K線 (扭轉突破)': 100,
             '攻擊K線': 100, 
             '多頭吞噬': 75
@@ -321,10 +240,8 @@ class LinJiaYangEngine:
         signals, scores = [], []
         for i in range(len(self.df)):
             sig = "無"
-            # 多方進場訊號優先檢核 (大底破繭最高優先)
-            if self.is_base_consolidation_breakout(i):
-                sig = "大底破繭 (長期整理突破)"
-            elif self.is_downtrend_reversal_attack(i):
+            # 多方進場訊號優先檢核
+            if self.is_downtrend_reversal_attack(i):
                 sig = "攻擊K線 (扭轉突破)"
             elif self.is_attack_k(i):
                 sig = "攻擊K線"

@@ -78,9 +78,7 @@ def load_all_stocks_for_dropdown():
     return list(dict.fromkeys(all_options)), mapping
 
 def get_formatted_signal(score, signal, above_ma60):
-    if signal == '大底破繭 (長期整理突破)':
-        return "👑 大底破繭 (長期整理突破)"
-    elif signal == '跌破上升趨勢線':
+    if signal == '跌破上升趨勢線':
         return "⚠️ 跌破趨勢 (波段停利)"
     elif signal == '黑K吞噬' or score < 0:
         return "💣 黑K吞噬 (逃命警示)"
@@ -178,8 +176,7 @@ def highlight_signals(row):
     try: score = int(row['推薦分數'])
     except: score = 0
         
-    if "大底破繭" in status: color = '#FACC15' # 👑 金黃色頂級高亮
-    elif "順勢強攻" in status or "扭轉突破" in status: color = '#22D3EE'
+    if "順勢強攻" in status: color = '#22D3EE'
     elif "多頭反轉" in status: color = '#4ADE80'
     elif "多頭蓄勢" in status: color = '#38BDF8'
     elif "跌破趨勢" in status: color = '#FB923C'
@@ -188,6 +185,7 @@ def highlight_signals(row):
     elif score > 0: color = '#A7F3D0'
     else: color = '#FFFFFF'
         
+    # 【關鍵修正】：加上 background-color: #0f172a，強制將表格儲存格背景鎖定為深色
     return [f'background-color: #0f172a; color: {color}; font-weight: bold'] * len(row)
 
 # ==========================================
@@ -603,10 +601,7 @@ if analyze_btn or resume_btn:
 # ==========================================
 with st.expander("📖 林家洋技術分析型態、TOP 5 前置濾網與四大防線戰術指南 (2026 TOP 5 實戰風控旗艦版)", expanded=True):
     st.markdown('''
-    ### 🎯 一、 核心型態判讀與實戰戰術指引 (含林家洋大底破繭與趨勢風控)
-    * 👑 **大底破繭 (長期整理突破)**：40～60 天以上長期橫盤打底（振幅 <= 22%）、月線與季線緊密糾結（<= 4.0%）後，首度帶量長紅突破箱頂第一根！
-      * **林家洋前輩傳授之核心精髓**：**「最好的股票還是要有長期整理，然後剛剛開始突破的股票」**。基期極低、籌碼經數月沉澱洗淨，上方無近期套牢反壓，為波段勝率與漲幅期望值最高的頂級起漲點！
-    * 🚫 **上方套牢反壓過濾**：前波 60 日內若曾遭遇大跌且上方緊鄰套牢密集區，一票否決短線反彈撞牆假突破（徹底排除如定穎投控這類開盤跳水陷阱）。
+    ### 🎯 一、 六大核心型態判讀與實戰戰術指引 (含林家洋趨勢破壞與停利精髓)
     * 🚀⚡ **順勢強攻 (突破高點 / 扭轉突破)**：季線之上的攻擊K線，已突破近 20 日高點，或在下降趨勢中出現結構扭轉。
       * **戰術定位**：主力表態發動訊號。
       * **林家洋核心買點精髓 (扭轉突破)**：
