@@ -12,15 +12,14 @@ logger = logging.getLogger(__name__)
 
 class LinJiaYangEngine:
     """
-    林家洋技術分析引擎 (2026-09-14 v8.3 實戰週線宏觀與破億防護艦隊版)
+    林家洋技術分析引擎 (2026-09-10 v8.1 旗艦大底破繭版)
     核心邏輯：
     1. 力竭原理與K線組合 (多頭吞噬、黑K吞噬、內困型態)
-    2. 【嚴選】40~60日長期整理出底突破 (Base Consolidation Breakout) 👑 (需破億+無上方套牢+週線走平翻揚)
-    3. 下降慣性扭轉突破 (Downtrend Structure Break / CHoCH) ⚡ (破億門檻)
+    2. 【新增】40~60日長期整理出底突破 (Base Consolidation Breakout) 👑
+    3. 下降慣性扭轉突破 (Downtrend Structure Break / CHoCH) ⚡
     4. 上升趨勢線跌破波段停利 (Upward Trendline Break) ⚠️
-    5. 【升級】上方套牢巨量反壓濾網 (Overhead Supply Filter 250D) 🚫 (擴大回溯至1年，抓出歷史炒作妖股)
-    6. 【新增】週K線多週期宏觀趨勢濾網 (Weekly Trend Filter) 📈 (排除週線空方段高檔死貓跳)
-    7. 剛性破億門檻 (單日成交金額 >= 1.0 億元台幣，杜絕邊緣投機股)
+    5. 【新增】上方套牢巨量反壓濾網 (Overhead Supply Filter) 🚫
+    6. 雙軌選股、首日強攻限制、季線乖離與波段漲幅硬性阻斷
     """
     def __init__(self, df):
         """
@@ -28,7 +27,6 @@ class LinJiaYangEngine:
         """
         self.df = df.copy()
         self._prepare_indicators()
-        self._prepare_weekly_indicators()
 
     def _prepare_indicators(self):
         """計算基礎技術指標與實戰前置濾網指標"""
@@ -49,126 +47,13 @@ class LinJiaYangEngine:
         # --- 5日均量 (Vol_MA5)、爆量比與成交金額 ---
         self.df['Vol_MA5'] = self.df['Volume'].rolling(window=5, min_periods=1).mean()
         self.df['Vol_MA5_Ratio'] = (self.df['Volume'] / self.df['Vol_MA5'].replace(0, 1)).round(2)
-        
-        # 兼容股數 (Shares) 與張數 (Lots)：若最大成交量 > 10萬，視為股數；否則視為張數 (乘以1000)
-        max_vol = self.df['Volume'].max() if len(self.df) > 0 else 0
-        vol_multiplier = 1.0 if max_vol > 100000 else 1000.0
-        self.df['Amount_100M'] = ((self.df['Close'] * self.df['Volume'] * vol_multiplier) / 100000000.0).round(2)
+        self.df['Amount_100M'] = ((self.df['Close'] * self.df['Volume']) / 100000000).round(2)
         
         # 計算實體大小與漲跌幅
         self.df['Body'] = self.df['Close'] - self.df['Open']
         self.df['Body_Abs'] = self.df['Body'].abs()
         self.df['Range'] = self.df['High'] - self.df['Low']
         self.df['Pct_Change'] = self.df['Close'].pct_change() * 100
-
-    def _prepare_weekly_indicators(self):
-        """
-        【新增】：合成真實週K線數據並計算週線均線與趨勢
-        """
-        try:
-            df_temp = self.df.copy()
-            if not isinstance(df_temp.index, pd.DatetimeIndex):
-                df_temp.index = pd.to_datetime(df_temp.index)
-            
-            # 以每週五為基準重採樣為週K線
-            self.weekly_df = df_temp.resample('W-FRI').agg({
-                'Open': 'first',
-                'High': 'max',
-                'Low': 'min',
-                'Close': 'last',
-                'Volume': 'sum'
-            }).dropna()
-
-            if len(self.weekly_df) >= 5:
-                self.weekly_df['W_MA5'] = self.weekly_df['Close'].rolling(window=5, min_periods=1).mean()
-                self.weekly_df['W_MA10'] = self.weekly_df['Close'].rolling(window=10, min_periods=1).mean()
-                self.weekly_df['W_MA20'] = self.weekly_df['Close'].rolling(window=20, min_periods=1).mean()
-                # 計算週 5MA 斜率 (本週相較前週)
-                self.weekly_df['W_MA5_Slope'] = self.weekly_df['W_MA5'] - self.weekly_df['W_MA5'].shift(1)
-            else:
-                self.weekly_df['W_MA5'] = self.weekly_df['Close']
-                self.weekly_df['W_MA10'] = self.weekly_df['Close']
-                self.weekly_df['W_MA20'] = self.weekly_df['Close']
-                self.weekly_df['W_MA5_Slope'] = 0.0
-        except Exception as e:
-            logger.warning(f"週K線重採樣失敗，改用預設值: {e}")
-            self.weekly_df = pd.DataFrame()
-
-    def is_weekly_downtrend(self, idx):
-        """
-        📈 【週K線宏觀趨勢過濾 (Weekly Trend Filter)】
-        判定原則：
-        1. 若最新週K線收盤價跌破週 5MA，且週 5MA 正在向下彎曲 (Slope < 0)；
-        2. 或在近 4 週內曾自波段最高點急跌拉回超過 8.0% 且處於下彎均線下方 (如華碩 1030 見頂下殺)；
-        滿足上述條件者判定為「週線空方修正段」，日線出現的任何吞噬均視為弱勢反彈，一票否決！
-        """
-        if self.weekly_df.empty or len(self.weekly_df) < 5:
-            return False
-            
-        try:
-            curr_date = self.df.index[idx]
-            # 取得截至當日為止的最新週K資料
-            w_sub = self.weekly_df[self.weekly_df.index <= curr_date]
-            if len(w_sub) < 5:
-                return False
-                
-            w_curr = w_sub.iloc[-1]
-            w_ma5 = w_curr['W_MA5']
-            w_slope = w_curr['W_MA5_Slope']
-            
-            # 條件1：收在週5MA之下且週5MA下彎
-            cond_below_falling_ma5 = (w_curr['Close'] < w_ma5) and (w_slope < -0.05)
-            
-            # 條件2：高檔波段見頂下挫 (近4週高點回落超過 8% 且週K為黑K)
-            recent_4w_high = w_sub.iloc[-4:]['High'].max()
-            pullback_from_high = ((recent_4w_high - w_curr['Close']) / recent_4w_high * 100) if recent_4w_high > 0 else 0
-            cond_high_altitude_top = (pullback_from_high > 8.0) and (w_curr['Close'] < w_ma5)
-            
-            return bool(cond_below_falling_ma5 or cond_high_altitude_top)
-        except Exception as e:
-            logger.debug(f"is_weekly_downtrend 計算錯誤: {e}")
-            return False
-
-    def has_overhead_supply_wall(self, idx):
-        """
-        🚫 【上方套牢巨量反壓濾網 (Overhead Supply Wall 250D)】
-        防範像 華經 (2025年自 86.20 崩跌至 31.25) 或 定穎投控 這類：
-        過去 1 年 (250個交易日) 內曾自歷史高點崩跌超過 28%，且上方存在密集的歷史大量套牢密集區。
-        """
-        if idx < 40: return False
-        curr = self.df.iloc[idx]
-        
-        # 擴大回溯視野至最多 250 個交易日 (1 整年)
-        lookback = self.df.iloc[max(0, idx-250):idx]
-        max_h = lookback['High'].max()
-        min_l = lookback['Low'].min()
-        
-        # 檢驗過去1年內是否曾遭遇深幅崩跌 > 28% (如華經自 86 跌至 31)
-        total_drop = (max_h - min_l) / max_h * 100 if max_h > 0 else 0
-        if total_drop > 28.0:
-            peak_date = lookback['High'].idxmax()
-            peak_idx = lookback.index.get_loc(peak_date)
-            peak_window = lookback.iloc[max(0, peak_idx-10):min(len(lookback), peak_idx+10)]
-            peak_avg_vol = peak_window['Volume'].mean() if len(peak_window) > 0 else 0
-            curr_vol_ma5 = curr['Vol_MA5']
-            
-            # 若歷史高點成交量異常龐大 (為當前5日均量的 1.8 倍以上)，且當前股價仍在歷史高點的 0.85 倍以下
-            # 代表上方 20%~80% 空間全是歷史巨量解套賣壓山頭 (妖股/主力出貨型態)
-            if peak_avg_vol > curr_vol_ma5 * 1.8 and curr['Close'] < max_h * 0.85:
-                return True
-                
-        # 兼顧近 60 天短期反彈撞牆 (原定穎投控型態)
-        lookback_60 = self.df.iloc[max(0, idx-60):idx]
-        max_h60 = lookback_60['High'].max()
-        min_l60 = lookback_60['Low'].min()
-        drop_60 = (max_h60 - min_l60) / max_h60 * 100 if max_h60 > 0 else 0
-        if drop_60 > 22.0:
-            half_idx = len(lookback_60) // 2
-            early_high = lookback_60.iloc[:half_idx]['High'].max()
-            if curr['Close'] < early_high * 0.90 and curr['Gain_20D'] > 12.0:
-                return True
-                
-        return False
 
     def is_bullish_engulfing(self, idx):
         """判斷是否為多頭吞噬 (Bullish Engulfing)"""
@@ -179,7 +64,7 @@ class LinJiaYangEngine:
         cond1 = prev['Body'] < 0  # 前一根黑K
         cond2 = curr['Body'] > 0  # 當前紅K
         cond3 = (curr['Open'] <= prev['Close']) and (curr['Close'] >= prev['Open']) # 包覆實體
-        return bool(cond1 and cond2 and cond3)
+        return cond1 and cond2 and cond3
 
     def is_bearish_engulfing(self, idx):
         """判斷是否為黑K吞噬 (Bearish Engulfing)"""
@@ -190,7 +75,7 @@ class LinJiaYangEngine:
         cond1 = prev['Body'] > 0  # 前一根紅K
         cond2 = curr['Body'] < 0  # 當前黑K
         cond3 = (curr['Open'] >= prev['Close']) and (curr['Close'] <= prev['Open']) # 包覆實體
-        return bool(cond1 and cond2 and cond3)
+        return cond1 and cond2 and cond3
 
     def is_harami(self, idx):
         """判斷是否為內困型態 (Harami)"""
@@ -201,33 +86,27 @@ class LinJiaYangEngine:
         cond1 = prev['Body_Abs'] > curr['Body_Abs'] * 2 # 前根實體顯著較大
         cond2 = (curr['High'] <= prev['High']) and (curr['Low'] >= prev['Low']) # 價格範圍在內
         cond3 = curr['Volume'] <= prev['Volume'] # 量能量縮
-        return bool(cond1 and cond2 and cond3)
+        return cond1 and cond2 and cond3
 
     def is_base_consolidation_breakout(self, idx):
         """
         👑 【林家洋核心大底起漲理論】：40~60日長期整理破繭第一根 (Base Consolidation Breakout)
         前輩心法：「最好的股票還是要有長期整理，然後剛剛開始突破的股票」
-        升級防呆：
-        1. 成交金額剛性門檻：當日成交金額必須 >= 1.0 億元台幣！
-        2. 排除上方歷史巨量套牢山頭 (has_overhead_supply_wall)！
-        3. 排除週線空方段 (is_weekly_downtrend)！
+        特徵：
+        1. 時間維度：過去 40~60 個交易日處於打底整理狀態 (基期極低)。
+        2. 空間維度：過去 40 日的高低點振幅狹窄 (箱型震盪 <= 22%)，波動充分收斂。
+        3. 均線糾結：月線 (MA20) 與季線 (MA60) 差距 <= 4.0%，均線走平糾結纏繞。
+        4. 出底第一根：當日實體紅K (>= 2.5%)，成交量放大至 5 日均量 1.8 倍以上 (且 >= 1,200 張)，
+           收盤價實體帶量長紅突破過去 40 日的箱型整理平台最高點！
         """
         if idx < 40: return False
         curr = self.df.iloc[idx]
         vol_ma5 = self.df['Volume'].iloc[idx-5:idx].mean()
 
-        # 基本流動性門檻 (>= 800張均量, >= 1200張當日量, 且成交金額 >= 1.0 億元)
+        # 基本流動性門檻 (>= 800張均量, >= 1200張當日量)
         vol_threshold_ma5 = 800 * 1000 if vol_ma5 > 100000 else 800
         vol_threshold_curr = 1200 * 1000 if curr['Volume'] > 100000 else 1200
         if vol_ma5 < vol_threshold_ma5 or curr['Volume'] < vol_threshold_curr:
-            return False
-            
-        # 🌟 剛性破億門檻 (徹底排除華經 0.86 億這類邊緣投機股)
-        if curr['Amount_100M'] < 1.0:
-            return False
-
-        # 🌟 阻斷濾網：上方巨量反壓與週線走空一票否決
-        if self.has_overhead_supply_wall(idx) or self.is_weekly_downtrend(idx):
             return False
 
         # 過去 40 天數據 (idx-40:idx)
@@ -251,29 +130,47 @@ class LinJiaYangEngine:
         cond3 = curr['Volume'] >= vol_ma5 * 1.8
         cond4 = curr['Close'] > high_40
 
-        return bool(cond1 and cond2 and cond3 and cond4)
+        return cond1 and cond2 and cond3 and cond4
+
+    def has_overhead_supply_wall(self, idx):
+        """
+        🚫 【上方套牢巨量反壓濾網 (Overhead Supply Wall)】
+        防範像定穎投控這類：前波曾遭遇巨量崩跌，上方短期內存在龐大套牢密集區，反彈極易撞牆跳水。
+        """
+        if idx < 40: return False
+        curr = self.df.iloc[idx]
+        lookback = self.df.iloc[max(0, idx-60):idx]
+        max_h = lookback['High'].max()
+        min_l = lookback['Low'].min()
+        
+        # 檢驗前波是否曾有崩跌 > 22%
+        total_drop = (max_h - min_l) / max_h * 100 if max_h > 0 else 0
+        if total_drop > 22.0:
+            half_idx = len(lookback) // 2
+            early_high = lookback.iloc[:half_idx]['High'].max()
+            # 若當前股價仍深陷在早期崩跌平台下方 10%~25%，且近期從最低點急拉超過 12%
+            # 代表這是大跌後的深水區反彈，正逼近上方套牢密集區
+            if curr['Close'] < early_high * 0.90 and curr['Gain_20D'] > 12.0:
+                return True
+        return False
 
     def is_downtrend_reversal_attack(self, idx):
         """
         ⚡ 【林家洋核心理論】：下降趨勢反轉進場點 (破底翻起漲先鋒)
+        定義：趨勢向下，高點與低點皆傾向越來越低 (Lower Highs & Lower Lows)；
+              此時伴隨高成交量實體突破前波反彈高點，打破空方慣性，為絕佳多方進場時機。
         """
         if idx < 20: return False
         curr = self.df.iloc[idx]
         vol_ma5 = self.df['Volume'].iloc[idx-5:idx].mean()
 
-        # 基本流動性門檻 (>= 800張均量, >= 1200張當日量, 且成交金額 >= 1.0 億元)
+        # 基本流動性門檻 (>= 800張均量, >= 1200張當日量)
         vol_threshold_ma5 = 800 * 1000 if vol_ma5 > 100000 else 800
         vol_threshold_curr = 1200 * 1000 if curr['Volume'] > 100000 else 1200
         if vol_ma5 < vol_threshold_ma5 or curr['Volume'] < vol_threshold_curr:
             return False
-            
-        if curr['Amount_100M'] < 1.0:
-            return False
 
-        # 阻斷濾網：上方巨量反壓與週線走空一票否決
-        if self.has_overhead_supply_wall(idx) or self.is_weekly_downtrend(idx):
-            return False
-
+        # 將過去20日切分為前半段 (idx-20:idx-6) 與 後半段 (idx-6:idx)
         part1 = self.df.iloc[idx-20:idx-6]
         part2 = self.df.iloc[idx-6:idx]
 
@@ -293,27 +190,29 @@ class LinJiaYangEngine:
         if recent_surges >= 2 or gain_5d > 20.0:
             return False
 
+        # 當日發動條件：實體紅K、漲幅 >= 2.5%、伴隨高成交量 (放量1.5倍以上)、實體收盤價突破後段反彈高點 h2
         cond1 = curr['Pct_Change'] >= 2.5
         cond2 = curr['Body'] > 0
         cond3 = curr['Volume'] > vol_ma5 * 1.5
         cond4 = curr['Close'] > h2
 
-        return bool(cond1 and cond2 and cond3 and cond4)
+        return cond1 and cond2 and cond3 and cond4
 
     def is_attack_k(self, idx):
-        """判斷是否為攻擊K線 (v8.3：升級破億門檻、250日反壓與週線走勢)"""
+        """判斷是否為攻擊K線 (2026-09-10 升級：納入上方套牢反壓過濾)"""
         if idx < 20: return False
         curr = self.df.iloc[idx]
         vol_ma5 = self.df['Volume'].iloc[idx-5:idx].mean()
         
-        # 基本流動性門檻
+        # --- 雜魚與一日遊爆量硬性過濾 (Anti-Junk / Anti-Spike) ---
         vol_threshold_ma5 = 800 * 1000 if vol_ma5 > 100000 else 800
         vol_threshold_curr = 1200 * 1000 if curr['Volume'] > 100000 else 1200
         if vol_ma5 < vol_threshold_ma5 or curr['Volume'] < vol_threshold_curr:
             return False
             
-        # 🌟 門檻2：當日成交金額需 >= 1.0 億元台幣 (嚴格提升至破億標準)
-        if curr['Amount_100M'] < 1.0:
+        # 門檻2：當日成交金額需 >= 6000萬台幣
+        turnover = (curr['Close'] * curr['Volume']) if curr['Volume'] > 100000 else (curr['Close'] * curr['Volume'] * 1000)
+        if turnover < 60000000:
             return False
             
         # 門檻3：排除突兀暴衝一日遊 (單日暴增4倍但平時無量)
@@ -321,7 +220,7 @@ class LinJiaYangEngine:
         if curr['Volume'] > vol_ma5 * 4.0 and vol_ma5 < vol_spike_limit:
             return False
             
-        # 首日突破限制 (排除連漲力竭出貨K)
+        # --- 首日突破限制 (排除連漲力竭出貨K) ---
         past_5d = self.df.iloc[idx-5:idx]
         recent_surges = (past_5d['Pct_Change'] >= 3.0).sum()
         min_5d = past_5d['Low'].min()
@@ -329,8 +228,8 @@ class LinJiaYangEngine:
         if recent_surges >= 2 or gain_5d > 20.0:
             return False
 
-        # 🌟 阻斷濾網：排除上方沉重套牢巨峰與週線空方段
-        if self.has_overhead_supply_wall(idx) or self.is_weekly_downtrend(idx):
+        # --- 【新增】：排除上方沉重套牢巨峰 (防範弱勢反彈撞牆假突破) ---
+        if self.has_overhead_supply_wall(idx):
             return False
 
         cond1 = curr['Pct_Change'] >= 3.0 # 漲幅夠大
@@ -340,11 +239,12 @@ class LinJiaYangEngine:
         # 突破近20日高點
         swing_high_20 = self.df['High'].iloc[idx-20:idx].max()
         cond4 = curr['Close'] > swing_high_20
-        return bool(cond1 and cond2 and cond3 and cond4)
+        return cond1 and cond2 and cond3 and cond4
 
     def is_uptrend_line_break(self, idx):
         """
         ⚠️ 【林家洋核心理論】：上升趨勢波段停利點
+        定義：上升趨勢之低點連成線（上升趨勢線）被跌破，或跌破前波次低點，多方墊高慣性終結
         """
         if idx < 20: return False
         curr = self.df.iloc[idx]
@@ -361,20 +261,22 @@ class LinJiaYangEngine:
         idx_t1 = self.df.index.get_loc(t1)
         idx_t2 = self.df.index.get_loc(t2)
 
+        # 判定是否具備上升趨勢特徵：低點越來越高 (Higher Lows)
         if l2 <= l1 or idx_t2 <= idx_t1:
             return False
 
         slope = (l2 - l1) / (idx_t2 - idx_t1)
         trendline_val = l2 + slope * (idx - idx_t2)
 
+        # 當日收盤實體跌破上升趨勢線，或收盤實體跌破前波次低點 l2 (階梯防守點)
         break_line = (curr['Close'] < trendline_val) and (prev['Close'] >= (trendline_val - slope))
         break_prev_low = (curr['Close'] < l2) and (prev['Close'] >= l2)
         is_weak = (curr['Body'] < 0) or (curr['Pct_Change'] < 0)
 
-        return bool((break_line or break_prev_low) and is_weak)
+        return (break_line or break_prev_low) and is_weak
 
     def calculate_recommendation_score(self, idx):
-        """計算推薦指數 (v8.3 多週期雙軌嚴選版)"""
+        """計算推薦指數 (v8.1 大底突破 120 分頂級權重)"""
         if idx < 5: return 0
         curr = self.df.iloc[idx]
         signal = curr.get('Signal', '無')
@@ -383,7 +285,7 @@ class LinJiaYangEngine:
             return 30 if curr['Close'] > curr['MA60'] else 15
             
         buy_signal_strength = {
-            '大底破繭 (長期整理突破)': 120,
+            '大底破繭 (長期整理突破)': 120, # 👑 最高評分
             '攻擊K線 (扭轉突破)': 100,
             '攻擊K線': 100, 
             '多頭吞噬': 75
@@ -415,12 +317,10 @@ class LinJiaYangEngine:
         return min(int(score), 120) if score > 0 else max(int(score), -120)
 
     def run_analysis(self):
-        """執行全量分析 (加入週線空方與反壓一票否決過濾)"""
+        """執行全量分析"""
         signals, scores = [], []
         for i in range(len(self.df)):
             sig = "無"
-            curr = self.df.iloc[i]
-            
             # 多方進場訊號優先檢核 (大底破繭最高優先)
             if self.is_base_consolidation_breakout(i):
                 sig = "大底破繭 (長期整理突破)"
@@ -429,15 +329,11 @@ class LinJiaYangEngine:
             elif self.is_attack_k(i):
                 sig = "攻擊K線"
             elif self.is_bullish_engulfing(i):
-                # 🌟 多頭吞噬過濾：若成交金額未破億、或上方有反壓、或週線下彎走空，一律降為弱勢反彈，不給買進訊號！
-                if curr['Amount_100M'] >= 1.0 and not self.has_overhead_supply_wall(i) and not self.is_weekly_downtrend(i):
-                    sig = "多頭吞噬"
-                else:
-                    sig = "弱勢反彈 (空頭壓制)"
+                sig = "多頭吞噬"
             elif self.is_harami(i):
                 sig = "內困型態"
             
-            # 風控與出場賣訊優先權最高
+            # 風控與出場賣訊優先權最高 (若同時出現，以出場避險為第一優先)
             if self.is_bearish_engulfing(i):
                 sig = "黑K吞噬"
             elif self.is_uptrend_line_break(i) and sig != "黑K吞噬":
