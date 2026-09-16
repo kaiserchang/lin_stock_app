@@ -14,7 +14,7 @@ from scan_orchestrator import TaiwanStockDataFetcher
 # ==========================================
 # 1. 系統設定與存檔設定
 # ==========================================
-st.set_page_config(page_title="林家洋 - 全市場雷達 (v8.4 旗艦版)", layout="wide")
+st.set_page_config(page_title="林家洋 - 全市場雷達 (圖示說明化)", layout="wide")
 
 CONFIG_FILE = "user_settings.json"
 CACHE_FILES = {
@@ -259,13 +259,7 @@ def get_market_regime():
         
         if close < ma20 or pct <= -1.0:
             status = "BEAR_DEFENSE"
-            if close < ma20 and pct <= -1.0:
-                cond_desc = f"實體跌破 20MA月線 ({ma20:,.1f}點) 且單日回檔"
-            elif close < ma20:
-                cond_desc = f"處於 20MA月線 ({ma20:,.1f}點) 之下"
-            else:
-                cond_desc = f"單日跌幅達 {pct:.2f}%"
-            msg = f"加權指數收 {close:,.1f}點 (漲跌 {pct:+.2f}%)，{cond_desc}。提醒提高防禦意識、謹慎控管持股成數並嚴格執行停損停利，切忌盲目追高；多空行情皆有獲利良機，精選抗跌強勢標的順勢操作！"
+            msg = f"加權指數收 {close:,.1f}點 (漲跌 {pct:+.2f}%)，實體跌破 20MA月線 ({ma20:,.1f}點)！系統啟動「空頭避險開關」，強烈建議今日 100% 空手觀望，強制關閉 TOP 5 追價買單！"
         elif close >= ma20 and close >= ma60:
             status = "BULL_NORMAL"
             msg = f"加權指數收 {close:,.1f}點 (漲跌 {pct:+.2f}%)，穩居月線 ({ma20:,.1f}點) 與季線 ({ma60:,.1f}點) 之上，多頭順風，可依準則順勢佈局！"
@@ -281,7 +275,6 @@ def get_market_regime():
 # 4. 網頁 UI 與 4 大模式切換
 # ==========================================
 st.title("📡 林家洋技術分析 - 全市場掃描雷達")
-st.markdown("##### 🚀 **v8.4 旗艦版** `(2026-09-16 最新升級)` ｜ 🏛️ 三大法人籌碼矩陣・外資隔日沖警示・高持股微妙空間雙數張獲利體系")
 
 
 tw50_list = list(TW50_MAPPING.keys())
@@ -300,16 +293,6 @@ def sync_watch_list_to_file():
     save_stocks(st.session_state.watch_list)
 
 with st.sidebar:
-    with st.expander("✨ 系統版本：v8.4 旗艦版 (2026-09-16)", expanded=False):
-        st.markdown("""
-        **【v8.4 核心重大升級摘要】**
-        * 🏛️ **三大法人全自動日報串接**：自動同步證交所 (TWSE T86) 與櫃買中心 (TPEx)，取得外資/投信/自營商進出張數。
-        * 🔥 **土洋合擊波段強攻**：投信連買且外資加碼，推薦評分額外 **+20 分**。
-        * 💎 **投信波段鎖碼**：投信連買或持股創高，推薦評分額外 **+15 分**。
-        * ⚠️ **外資隔日沖疑慮標籤**：前日外資脈衝暴買佔比 > 35%，自動標註警語「T+1 衝高 +5%~+8% 堅決鎖利」。
-        * ⚡ **高法人重倉雙數張鐵律**：法人持股 >= 20% 標的（如強茂 9/16 實戰），第 1 張衝高鎖利、第 2 張成本保本博漲停！
-        * 📊 **CSV 報表匯出擴充**：全自動納入三大法人狀態與進出張數。
-        """)
     st.header("⚙️ 掃描模式設定")
     scan_mode = st.radio(
         "請選擇掃描範圍：",
@@ -388,11 +371,6 @@ st.sidebar.markdown("---")
 # ==========================================
 # 5. 批次運算與持久化儲存核心 (斷點續傳升級版 - 側邊欄修正)
 # ==========================================
-st.sidebar.info("""
-⏰ **盤後資料取得時程指南：**
-* 🕒 **15:30 後**：可取得當日收盤與外資/投信買賣超資料 (流量)。
-* 🕔 **17:00 後**：證交所結算完畢，可取得當日最完整外資持股總數與持股比率 (存量)。
-""")
 analyze_btn = st.sidebar.button("🚀 開始全新批次掃描", width="stretch")
 
 # 👇 偵測備份檔，提供下載與接續按鈕 (改為側邊欄垂直排列) 👇
@@ -489,50 +467,14 @@ if analyze_btn or resume_btn:
                     formatted_signal = get_formatted_signal(score, raw_signal, above_ma60)
                     
                     market_date_val = str(df.index[-1]).split(' ')[0] if len(df) > 0 else '未知'
-                    inst_tag = latest.get('InstitutionalTag', '➖ 一般籌碼')
-                    foreign_lots = int(round(latest.get('Foreign_Buy', 0) / 1000.0)) if 'Foreign_Buy' in latest else 0
-                    trust_lots = int(round(latest.get('Trust_Buy', 0) / 1000.0)) if 'Trust_Buy' in latest else 0
-
-                    # 外資持有總張數
-                    f_hold_shares = latest.get('Foreign_Hold_Shares', None)
-                    if f_hold_shares is not None and not pd.isna(f_hold_shares) and str(f_hold_shares).strip() not in ['None', '', '-']:
-                        try: foreign_hold_lots = int(round(float(f_hold_shares) / 1000.0))
-                        except: foreign_hold_lots = '-'
-                    else:
-                        foreign_hold_lots = '-'
-
-                    # 外資持股率%
-                    f_pct_val = latest.get('Foreign_Hold_Pct', None)
-                    if f_pct_val is not None and not pd.isna(f_pct_val) and str(f_pct_val).strip() not in ['None', '', '-']:
-                        try: f_pct_str = f"{float(f_pct_val):.2f}%"
-                        except: f_pct_str = "-"
-                    else:
-                        f_pct_str = "-"
-
-                    # 🌟 方案 A：投信波段累積鎖碼張數（近 60 日推估）
-                    t_accum_val = latest.get('Trust_60D_Accum', None)
-                    if t_accum_val is not None and not pd.isna(t_accum_val) and str(t_accum_val).strip() not in ['None', '', '-']:
-                        try:
-                            trust_accum_val = int(round(float(t_accum_val)))
-                        except:
-                            trust_accum_val = 0
-                    else:
-                        trust_accum_val = trust_lots if trust_lots != 0 else 0
-
                     return {
                         '代碼': stock_id,
                         '名稱': stock_name if stock_name else "-",
                         '收盤價': latest['Close'],
                         '成交量': int(latest['Volume']),
-                        '三大法人狀態': inst_tag,
-                        '外資買賣(張)': foreign_lots,
-                        '投信買賣(張)': trust_lots,
-                        '外資持股(張)': foreign_hold_lots,
-                        '外資持股率%': f_pct_str,
-                        '投信波段累積鎖碼張數（近 60 日推估）': trust_accum_val,
+                        '季線(MA60)': latest['MA60'],
                         '最新形態': formatted_signal,
                         '推薦分數': score,
-                        '季線(MA60)': latest['MA60'],
                         '季線之上': "✅" if above_ma60 else "❌",
                         '資料來源': df['Data_Source'].iloc[-1] if 'Data_Source' in df.columns else '未知',
                         '行情日期': market_date_val
@@ -688,9 +630,9 @@ with st.expander("📖 林家洋技術分析型態、TOP 5 前置濾網與四大
 
     ---
 
-    ### 🛡️ 二、 大盤環境與風險控管 (Market Regime & Risk Control)
-    * ⚠️ **偏弱震盪／防守提醒**：當台股加權指數 (^TWII) 收盤 **跌破 20MA 月線**，或 **單日長黑重挫 > 1.0%**。
-      * **戰術動作**：**提醒提高防禦意識、控管部位成數**。多空行情皆有獲利機會，此時更應注重選股不選市，嚴格落實防守防線與停損停利，避免過度槓桿與盲目追高！
+    ### 🚨 二、 大盤空頭避險開關 (Market Regime Filter)
+    * 🔴 **空頭避險觸發**：當台股加權指數 (^TWII) 收盤 **實體跌破 20MA 月線**，或 **單日長黑重挫 > 1.0%**。
+      * **戰術動作**：**系統啟動強制避險，強烈建議今日 100% 空手觀望，強制關閉所有 TOP 5 追價買單！**
     * 🟢 **多頭順風**：指數穩居月線 (20MA) 與季線 (60MA) 之上，順勢操作，落實雙軌選股。
 
     ---
@@ -722,50 +664,10 @@ with st.expander("📖 林家洋技術分析型態、TOP 5 前置濾網與四大
     ''')
 
 # 【修正1】加上 '成交量': '{:,}' 來啟用千分位分隔符號
-# 【防呆容錯格式化函式】：徹底解決包含 '未知' 或字串時拋出 ValueError: Cannot specify ',' with 's' 的問題
-def fmt_price(x):
-    try:
-        if pd.isna(x) or str(x).strip() in ['未知', '-', 'None', '']: return '-'
-        return f"{float(x):.2f}"
-    except (ValueError, TypeError):
-        return str(x)
+format_dict = {'收盤價': '{:.2f}', '成交量': '{:,}', '季線(MA60)': '{:.2f}', '推薦分數': '{} 分'}
 
-def fmt_volume(x):
-    try:
-        if pd.isna(x) or str(x).strip() in ['未知', '-', 'None', '']: return '-'
-        return f"{int(float(x)):,}"
-    except (ValueError, TypeError):
-        return str(x)
-
-def fmt_lots(x):
-    try:
-        if pd.isna(x) or str(x).strip() in ['未知', '-', 'None', '']: return '-'
-        val = int(round(float(x)))
-        return "0" if val == 0 else f"{val:+,}"
-    except (ValueError, TypeError):
-        return str(x)
-
-def fmt_score(x):
-    try:
-        if pd.isna(x) or str(x).strip() in ['未知', '-', 'None', '']: return '-'
-        return f"{int(float(x))} 分"
-    except (ValueError, TypeError):
-        return str(x)
-
-format_dict = {
-    '收盤價': fmt_price,
-    '成交量': fmt_volume,
-    '外資買賣(張)': fmt_lots,
-    '投信買賣(張)': fmt_lots,
-    '外資持股(張)': fmt_volume,
-    '外資持股率%': lambda x: str(x) if x is not None and not pd.isna(x) and str(x).strip() != '' else '-',
-    '投信波段累積鎖碼張數（近 60 日推估）': fmt_lots,
-    '季線(MA60)': fmt_price,
-    '推薦分數': fmt_score
-}
-
-# 【修正2】定義期望的欄位顯示順序 (完整呈現外資買賣、投信買賣、外資持股張數、外資持股率%與投信波段累積鎖碼張數（近 60 日推估）)
-desired_cols = ['名稱', '收盤價', '成交量', '最新形態', '推薦分數', '三大法人狀態', '外資買賣(張)', '投信買賣(張)', '外資持股(張)', '外資持股率%', '投信波段累積鎖碼張數（近 60 日推估）', '季線(MA60)', '季線之上', '資料來源']
+# 【修正2】定義期望的欄位顯示順序
+desired_cols = ['名稱', '收盤價', '成交量', '最新形態', '推薦分數', '季線(MA60)', '季線之上', '資料來源']
 
 current_cache = st.session_state.scan_results.get(scan_mode, None)
 
@@ -782,11 +684,7 @@ if current_cache:
     if current_cache and current_cache.get("market_status"):
         m_stat = current_cache["market_status"]
         if m_stat.get("status") == "BEAR_DEFENSE":
-            msg_text = m_stat.get('msg', '')
-            # 相容清理舊快取中的極端用語
-            msg_text = msg_text.replace("！系統啟動「空頭避險開關」，強烈建議今日 100% 空手觀望，強制關閉 TOP 5 追價買單！", "。提醒提高防禦意識、謹慎控管部位成數並嚴設停損，切忌盲目追高；多空皆有獲利機會，精選抗跌強勢標的！")
-            msg_text = msg_text.replace("系統啟動「空頭避險開關」，強烈建議今日 100% 空手觀望，強制關閉 TOP 5 追價買單！", "提醒提高防禦意識、謹慎控管部位成數並嚴設停損，切忌盲目追高；多空皆有獲利機會，精選抗跌強勢標的！")
-            st.warning(f"⚠️ **【大盤環境提醒：震盪偏弱・審慎操作】** {msg_text}")
+            st.error(f"🚨 **【大盤空頭避險開關：已啟動】** {m_stat.get('msg')}")
         elif m_stat.get("status") == "BULL_NORMAL":
             st.success(f"🟢 **【大盤環境：多頭順風】** {m_stat.get('msg')}")
         else:
@@ -802,13 +700,9 @@ if current_cache:
     
     if current_cache["type"] == "single":
         st.subheader(f"📋 {scan_mode.split('：')[0]} 掃描結果 (完整列出)")
-        st.caption("💡 **法人籌碼數據權威說明**：依主管機關法規，『外資持股張數』與『外資持股率%』每日由證交所/櫃買中心依法公布；『投信』官方每日僅公告買賣超張數，未公開持股庫存總量，本系統特別實裝『投信波段累積鎖碼張數（近 60 日推估）』，以近一季（60 個交易日）波段實質淨買賣超滾動累計，精準量化投信最新季底作帳與認養動能！")
         data_list = current_cache["data"]
         if data_list:
             df_out = pd.DataFrame(data_list).set_index('代碼')
-            # 兼容舊快取欄位遷移
-            if '投信持股(張)' in df_out.columns and '投信波段累積鎖碼張數（近 60 日推估）' not in df_out.columns:
-                df_out['投信波段累積鎖碼張數（近 60 日推估）'] = df_out['投信持股(張)'].replace('官方未公開*', '0')
             # 【修正3】強制套用欄位順序
             df_out = df_out.reindex(columns=desired_cols, fill_value='未知')
             styled_out = df_out.style.format(format_dict).apply(highlight_signals, axis=1)
@@ -833,8 +727,6 @@ if current_cache:
             buy_list = current_cache["buy"]
             if buy_list:
                 df_buy = pd.DataFrame(buy_list).set_index('代碼')
-                if '投信持股(張)' in df_buy.columns and '投信波段累積鎖碼張數（近 60 日推估）' not in df_buy.columns:
-                    df_buy['投信波段累積鎖碼張數（近 60 日推估）'] = df_buy['投信持股(張)'].replace('官方未公開*', '0')
                 # 【修正3】強制套用欄位順序
                 df_buy = df_buy.reindex(columns=desired_cols, fill_value='未知')
                 styled_buy = df_buy.style.format(format_dict).apply(highlight_signals, axis=1)
@@ -858,8 +750,6 @@ if current_cache:
             sell_list = current_cache["sell"]
             if sell_list:
                 df_sell = pd.DataFrame(sell_list).set_index('代碼')
-                if '投信持股(張)' in df_sell.columns and '投信波段累積鎖碼張數（近 60 日推估）' not in df_sell.columns:
-                    df_sell['投信波段累積鎖碼張數（近 60 日推估）'] = df_sell['投信持股(張)'].replace('官方未公開*', '0')
                 # 【修正3】強制套用欄位順序
                 df_sell = df_sell.reindex(columns=desired_cols, fill_value='未知')
                 styled_sell = df_sell.style.format(format_dict).apply(highlight_signals, axis=1)

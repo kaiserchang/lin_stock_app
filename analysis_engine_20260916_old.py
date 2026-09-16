@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class LinJiaYangEngine:
     """
-    林家洋技術分析引擎 (2026-09-16 v8.4 三大法人籌碼矩陣與雙數張動態空間旗艦版)
+    林家洋技術分析引擎 (2026-09-14 v8.3 實戰週線宏觀與破億防護艦隊版)
     核心邏輯：
     1. 力竭原理與K線組合 (多頭吞噬、黑K吞噬、內困型態)
     2. 【嚴選】40~60日長期整理出底突破 (Base Consolidation Breakout) 👑 (需破億+無上方套牢+週線走平翻揚)
@@ -29,7 +29,6 @@ class LinJiaYangEngine:
         self.df = df.copy()
         self._prepare_indicators()
         self._prepare_weekly_indicators()
-        self._prepare_institutional_indicators()
 
     def _prepare_indicators(self):
         """計算基礎技術指標與實戰前置濾網指標"""
@@ -94,131 +93,6 @@ class LinJiaYangEngine:
         except Exception as e:
             logger.warning(f"週K線重採樣失敗，改用預設值: {e}")
             self.weekly_df = pd.DataFrame()
-
-    def _prepare_institutional_indicators(self):
-        """
-        計算三大法人籌碼衍生指標 (外資/投信持股量、買賣超與佔比)
-        相容於包含 Foreign_Buy, Trust_Buy, Dealer_Buy, Foreign_Hold, Trust_Hold 等欄位的資料
-        """
-        # 外資買賣超與持股
-        if 'Foreign_Hold' in self.df.columns:
-            self.df['Foreign_Hold_Diff'] = self.df['Foreign_Hold'].diff().fillna(0)
-            self.df['Foreign_Hold_MA5'] = self.df['Foreign_Hold'].rolling(5, min_periods=1).mean()
-        
-        # 投信買賣超與連續性
-        if 'Trust_Buy' in self.df.columns:
-            self.df['Trust_Buy_Cont'] = (self.df['Trust_Buy'] > 0).astype(int)
-            # 計算投信連續買超天數
-            cont_days = []
-            cur_cont = 0
-            for val in self.df['Trust_Buy']:
-                if val > 0:
-                    cur_cont += 1
-                else:
-                    cur_cont = 0
-                cont_days.append(cur_cont)
-            self.df['Trust_Cont_Days'] = cont_days
-        elif 'Trust_Hold' in self.df.columns:
-            self.df['Trust_Hold_Diff'] = self.df['Trust_Hold'].diff().fillna(0)
-            cont_days = []
-            cur_cont = 0
-            for val in self.df['Trust_Hold_Diff']:
-                if val > 0:
-                    cur_cont += 1
-                else:
-                    cur_cont = 0
-                cont_days.append(cur_cont)
-            self.df['Trust_Cont_Days'] = cont_days
-
-    def evaluate_institutional_flow(self, idx):
-        """
-        🏛️ 【三大法人籌碼矩陣分析 (Institutional Matrix)】
-        結合當日買賣超衝擊率 (流量) 與外資持股比率 (存量) 進行立體判定：
-        1. 🔥 土洋合擊波段強攻：外資與投信同步買超，加 20 分。
-        2. 💎 投信強勢鎖碼：投信單日買超逾 200 張或佔比逾 3%，加 15 分。
-        3. ⚠️ 外資急衝隔日沖疑慮：外資買超佔比 > 25% 且大買逾 1,500 張，加註警示次日衝高鎖利。
-        4. ⚡ 外資單方加碼：外資單日買超逾 1,000 張，加 5 分。
-        5. 🚨 法人倒貨調節：外資大賣逾 500 張且投信未挺，減 20 分。
-        6. 💡 內資主力型態股：投信 0 張且外資進出極小 (< 100 張)，標註純內資主力底型。
-        """
-        curr = self.df.iloc[idx]
-        volume = curr.get('Volume', 0)
-        foreign_buy = curr.get('Foreign_Buy', 0)
-        trust_buy = curr.get('Trust_Buy', 0)
-        foreign_hold_pct = curr.get('Foreign_Hold_Pct', None)
-        
-        has_inst = any(c in self.df.columns for c in ['Foreign_Buy', 'Trust_Buy'])
-        if not has_inst or (foreign_buy == 0 and trust_buy == 0 and foreign_hold_pct is None):
-            return "➖ 尚無法人數據", 0
-
-        foreign_lots = int(round(foreign_buy / 1000.0))
-        trust_lots = int(round(trust_buy / 1000.0))
-        vol_lots = int(round(volume / 1000.0)) if volume > 100000 else int(round(volume))
-
-        f_ratio = (foreign_lots / vol_lots * 100.0) if vol_lots > 0 else 0.0
-        t_ratio = (trust_lots / vol_lots * 100.0) if vol_lots > 0 else 0.0
-
-        tag = "➖ 一般籌碼"
-        score_adj = 0
-
-        # 1. 🔥 土洋合擊 (外資與投信同步買超)
-        if trust_lots >= 100 and foreign_lots >= 200:
-            tag = "🔥 土洋合擊強攻"
-            score_adj = 20
-        elif trust_lots > 0 and foreign_lots > 0:
-            tag = "🔥 土洋同步買超"
-            score_adj = 15
-        # 2. 💎 投信強勢鎖碼 (投信積極買超)
-        elif trust_lots >= 200 or t_ratio >= 3.0:
-            tag = "💎 投信強勢鎖碼"
-            score_adj = 15
-        elif trust_lots > 0:
-            tag = "💎 投信小幅加碼"
-            score_adj = 10
-        # 3. ⚠️ 外資急衝隔日沖疑慮 (單日急衝過大)
-        elif f_ratio >= 25.0 and foreign_lots >= 1500:
-            tag = "⚠️ 外資急衝隔日沖疑慮"
-            score_adj = 0
-        # 4. ⚡ 外資單邊積極買超
-        elif foreign_lots >= 1000:
-            tag = "⚡ 外資單邊積極買超"
-            score_adj = 5
-        # 5. 🚨 法人調節
-        elif foreign_lots <= -500 and trust_lots <= 0:
-            tag = "🚨 外資大倒貨調節"
-            score_adj = -20
-        elif foreign_lots < 0 and trust_lots < 0:
-            tag = "🚨 法人同步調節"
-            score_adj = -15
-        # 6. 💡 內資主力大底 (無法人干擾)
-        elif trust_lots == 0 and abs(foreign_lots) < 100:
-            tag = "💡 內資主力大底"
-            score_adj = 0
-        else:
-            tag = "➖ 一般籌碼結構"
-            score_adj = 0
-
-        # 若有外資持股比率且偏高，追加提示
-        if foreign_hold_pct is not None and not pd.isna(foreign_hold_pct):
-            try:
-                pct_val = float(foreign_hold_pct)
-                if pct_val >= 15.0:
-                    tag += f" (外資持股{pct_val:.1f}%)"
-            except (ValueError, TypeError):
-                pass
-
-        # 🌟 方案 A：若有投信 60 日波段累積且積極鎖碼 (>= 1,000 張)，強化標記
-        trust_60d_val = curr.get('Trust_60D_Accum', None)
-        if trust_60d_val is not None and not pd.isna(trust_60d_val):
-            try:
-                t_60d_int = int(round(float(trust_60d_val)))
-                if t_60d_int >= 1000 and "投信" not in tag:
-                    tag += f" 💎 投信鎖碼({t_60d_int:+,}張)"
-                    score_adj = max(score_adj, 15)
-            except (ValueError, TypeError):
-                pass
-
-        return tag, score_adj
 
     def is_weekly_downtrend(self, idx):
         """
@@ -572,23 +446,8 @@ class LinJiaYangEngine:
             signals.append(sig)
         
         self.df['Signal'] = signals
-        
-        inst_tags, inst_adjs = [], []
         for i in range(len(self.df)):
-            tag, adj = self.evaluate_institutional_flow(i)
-            inst_tags.append(tag)
-            inst_adjs.append(adj)
-            
-        self.df['InstitutionalTag'] = inst_tags
-        
-        for i in range(len(self.df)):
-            base_score = self.calculate_recommendation_score(i)
-            # 若有法人加成，僅在多方訊號時加乘
-            if base_score > 0:
-                final_score = min(120, base_score + inst_adjs[i])
-            else:
-                final_score = base_score
-            scores.append(final_score)
+            scores.append(self.calculate_recommendation_score(i))
             
         self.df['RecommendationScore'] = scores
         self.df['Above_MA60'] = (self.df['Close'] > self.df['MA60']).fillna(False)
