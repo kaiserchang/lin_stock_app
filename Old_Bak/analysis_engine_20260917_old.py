@@ -175,8 +175,8 @@ class LinJiaYangEngine:
         elif trust_lots > 0:
             tag = "💎 投信小幅加碼"
             score_adj = 10
-        # 3. ⚠️ 外資急衝隔日沖疑慮 (單日急衝過大，含中小型股高佔比脈衝)
-        elif (f_ratio >= 25.0 and foreign_lots >= 1200) or (f_ratio >= 35.0 and foreign_lots >= 500):
+        # 3. ⚠️ 外資急衝隔日沖疑慮 (單日急衝過大)
+        elif f_ratio >= 25.0 and foreign_lots >= 1500:
             tag = "⚠️ 外資急衝隔日沖疑慮"
             score_adj = 0
         # 4. ⚡ 外資單邊積極買超
@@ -203,10 +203,7 @@ class LinJiaYangEngine:
             try:
                 pct_val = float(foreign_hold_pct)
                 if pct_val >= 15.0:
-                    if abs(foreign_lots) < 50 and trust_lots == 0:
-                        tag += f" (外資持股{pct_val:.1f}%·長期鎖碼無動能)"
-                    else:
-                        tag += f" (外資持股{pct_val:.1f}%)"
+                    tag += f" (外資持股{pct_val:.1f}%)"
             except (ValueError, TypeError):
                 pass
 
@@ -595,25 +592,4 @@ class LinJiaYangEngine:
             
         self.df['RecommendationScore'] = scores
         self.df['Above_MA60'] = (self.df['Close'] > self.df['MA60']).fillna(False)
-        
-        # 🌟 實戰進場雙軌化指引 (Dual-Track Entry Strategy) 🌟
-        entry_strategies = []
-        for i in range(len(self.df)):
-            sig = signals[i]
-            tag = inst_tags[i]
-            sc = scores[i]
-            if sc >= 75:
-                # 強攻突破型 (大底破繭、順勢強攻) 且有法人動能助攻 -> 軌道 A
-                if any(k in sig for k in ["大底破繭", "攻擊K線 (扭轉突破)", "攻擊K線"]) and any(f in tag for f in ["🔥", "💎", "⚡"]):
-                    strat = "🚀 軌道 A：強攻先鋒 (明日09:30站穩開盤價，平盤至+1~2檔動態試單)"
-                elif "⚠️ 外資急衝" in tag:
-                    strat = "⚠️ 隔日沖防禦 (嚴禁早盤追高，若急拉+5%~+8%未鎖死應觀望，拉回再守)"
-                else:
-                    strat = "🛡️ 軌道 B：轉折防守 (恪守防守點，耐心等待回測發動K之 1/2 處分批承接)"
-            elif sc > 0:
-                strat = "🛡️ 軌道 B：轉折防守 (嚴守發動K低點，回測 1/2 處分批承接)"
-            else:
-                strat = "➖ 觀望"
-            entry_strategies.append(strat)
-        self.df['EntryStrategy'] = entry_strategies
         return self.df

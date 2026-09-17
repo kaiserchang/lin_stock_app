@@ -14,7 +14,7 @@ from scan_orchestrator import TaiwanStockDataFetcher
 # ==========================================
 # 1. 系統設定與存檔設定
 # ==========================================
-st.set_page_config(page_title="林家洋 - 全市場雷達 (v8.5 旗艦版)", layout="wide")
+st.set_page_config(page_title="林家洋 - 全市場雷達 (v8.4 旗艦版)", layout="wide")
 
 CONFIG_FILE = "user_settings.json"
 CACHE_FILES = {
@@ -125,28 +125,13 @@ section[data-testid="stSidebar"] * {
     color: #FFFFFF !important;
 }
 
-/* 2. 修正 Expander 折疊面板：包含外框、大字體醒目標題列與內容區全面強制深底白字 */
+/* 2. 修正 Expander 折疊面板：包含外框、標題列 (summary) 與內容區 (details) 全面強制深底白字 */
 div[data-testid="stExpander"], 
-div[data-testid="stExpander"] details {
-    background-color: #0f172a !important;
-    border: 2px solid #334155 !important;
-    border-radius: 8px !important;
-}
-div[data-testid="stExpander"] details:hover {
-    border-color: #EA580C !important;
-}
+div[data-testid="stExpander"] details, 
 div[data-testid="stExpander"] summary {
-    background-color: #1e293b !important;
-    color: #FB923C !important;
-    font-size: 1.15rem !important;
-    font-weight: bold !important;
-    padding: 10px 14px !important;
-    border-radius: 6px !important;
-}
-div[data-testid="stExpander"] summary p {
-    color: #FB923C !important;
-    font-size: 1.15rem !important;
-    font-weight: bold !important;
+    background-color: #0f172a !important;
+    color: #FFFFFF !important;
+    border-color: #1e293b !important;
 }
 div[data-testid="stExpander"] * {
     color: #FFFFFF !important;
@@ -158,177 +143,26 @@ div[data-testid="stDataFrame"], div[data-testid="stTable"], table {
     color: #FFFFFF !important;
 }
 
-/* ==========================================================================
-   4. 按鈕視覺層級優化 (Visual Hierarchy Optimization)
-   ========================================================================== */
-
-/* 4.1 🚀 核心靈魂操作：開始批次掃描按鈕 (Hero Primary Scan Button) 
-       全域最高視覺權重：超大字體、烈焰漸層、金黃流光外框、立體霓虹光暈 */
-div.st-key-btn_run_scan > button,
-section[data-testid="stSidebar"] div.st-key-btn_run_scan > button,
-button[kind="primary"],
-button[data-testid="stBaseButton-primary"] {
-    background: linear-gradient(135deg, #FF6B00 0%, #EA580C 45%, #DC2626 100%) !important;
-    color: #FFFFFF !important;
-    border: 2px solid #FED7AA !important; /* 耀眼金黃細邊框 */
-    border-radius: 12px !important;
-    font-size: 1.28rem !important;        /* 大幅放大字體 */
-    font-weight: 900 !important;          /* 極粗字體 */
-    letter-spacing: 1px !important;
-    min-height: 56px !important;          /* 增加按鈕高度，氣勢充足 */
-    padding: 14px 22px !important;
-    margin-top: 8px !important;
-    margin-bottom: 8px !important;
-    box-shadow: 0 4px 20px rgba(234, 88, 12, 0.65), 0 0 16px rgba(255, 107, 0, 0.5) !important;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    cursor: pointer !important;
-}
-
-/* 核心掃描按鈕內部文字標籤：強制 1.28rem、極粗體與立體文字陰影 */
-div.st-key-btn_run_scan > button *,
-section[data-testid="stSidebar"] div.st-key-btn_run_scan > button *,
-button[kind="primary"] * {
-    font-size: 1.28rem !important;
-    font-weight: 900 !important;
-    color: #FFFFFF !important;
-    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5) !important;
-    letter-spacing: 0.5px !important;
-}
-
-/* 核心掃描按鈕懸停與點選動態光效 */
-div.st-key-btn_run_scan > button:hover,
-section[data-testid="stSidebar"] div.st-key-btn_run_scan > button:hover,
-button[kind="primary"]:hover {
-    background: linear-gradient(135deg, #FFA040 0%, #FF6B00 50%, #EA580C 100%) !important;
-    border-color: #FFFFFF !important;
-    transform: translateY(-2px) scale(1.02) !important;
-    box-shadow: 0 8px 30px rgba(255, 107, 0, 0.85), 0 0 25px rgba(255, 122, 0, 0.7) !important;
-}
-
-div.st-key-btn_run_scan > button:active,
-div.st-key-btn_run_scan > button:focus,
-section[data-testid="stSidebar"] div.st-key-btn_run_scan > button:active,
-section[data-testid="stSidebar"] div.st-key-btn_run_scan > button:focus,
-button[kind="primary"]:active,
-button[kind="primary"]:focus {
-    transform: translateY(1px) scale(0.99) !important;
-    box-shadow: 0 2px 12px rgba(234, 88, 12, 0.6) !important;
-    border-color: #FED7AA !important;
-}
-
-/* 4.2 🧹 輔助維護功能：強制清除快取按鈕 (Secondary/Utility Button)
-       降噪設計：沉穩深鐵灰底色，不搶核心掃描按鈕焦點 */
-div.st-key-btn_clear_cache > button,
-section[data-testid="stSidebar"] div.st-key-btn_clear_cache > button,
-button[kind="secondary"],
-button[data-testid="stBaseButton-secondary"] {
-    background: #1e293b !important;
-    color: #94A3B8 !important;
-    border: 1.5px solid #475569 !important;
-    border-radius: 8px !important;
-    font-size: 0.95rem !important;
-    font-weight: 600 !important;
-    min-height: 42px !important;
-    padding: 8px 14px !important;
-    margin-top: 4px !important;
-    box-shadow: none !important;
-    transition: all 0.2s ease-in-out !important;
-    cursor: pointer !important;
-}
-
-div.st-key-btn_clear_cache > button *,
-section[data-testid="stSidebar"] div.st-key-btn_clear_cache > button *,
-button[kind="secondary"] * {
-    font-size: 0.95rem !important;
-    font-weight: 600 !important;
-    color: #94A3B8 !important;
-    text-shadow: none !important;
-}
-
-div.st-key-btn_clear_cache > button:hover,
-section[data-testid="stSidebar"] div.st-key-btn_clear_cache > button:hover,
-button[kind="secondary"]:hover {
-    background: #334155 !important;
-    color: #F87171 !important;            /* 懸停警示淡紅 */
-    border-color: #EF4444 !important;
-    box-shadow: 0 0 10px rgba(239, 68, 68, 0.25) !important;
-}
-
-/* 4.3 ▶️ 斷點續傳按鈕 (若出現未完成掃描備份時) */
-div.st-key-btn_resume_scan > button,
-section[data-testid="stSidebar"] div.st-key-btn_resume_scan > button {
-    background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%) !important;
-    color: #FFFFFF !important;
-    border: 1.5px solid #38BDF8 !important;
-    border-radius: 10px !important;
-    font-size: 1.05rem !important;
-    font-weight: 700 !important;
-    min-height: 48px !important;
-    box-shadow: 0 0 12px rgba(2, 132, 199, 0.4) !important;
-}
-div.st-key-btn_resume_scan > button * {
-    font-size: 1.05rem !important;
-    font-weight: 700 !important;
-    color: #FFFFFF !important;
-}
-
-/* 4.4 預設一般按鈕（如下載 CSV 按鈕等）保持明亮橘色與標準大小 */
-div[data-testid="stButton"] > button:not([kind="primary"]):not([kind="secondary"]),
-div[data-testid="stDownloadButton"] > button {
-    background-color: #EA580C !important;
-    color: #FFFFFF !important;
+/* 4. 修正 st.button：強制醒目橘色背景與白色文字，徹底解決手機端按鈕反白問題 */
+div[data-testid="stButton"] > button,
+section[data-testid="stSidebar"] div[data-testid="stButton"] > button {
+    background-color: #EA580C !important; /* 亮橘色背景 */
+    color: #FFFFFF !important;            /* 白色粗體文字 */
     border: none !important;
     border-radius: 8px !important;
     font-weight: bold !important;
-    font-size: 1rem !important;
 }
 
-div[data-testid="stButton"] > button:not([kind="primary"]):not([kind="secondary"]):hover,
-div[data-testid="stDownloadButton"] > button:hover {
-    background-color: #C2410C !important;
+/* 手指按壓、懸停與焦點狀態強制鎖定深橘色 */
+div[data-testid="stButton"] > button:hover,
+div[data-testid="stButton"] > button:focus,
+div[data-testid="stButton"] > button:active,
+section[data-testid="stSidebar"] div[data-testid="stButton"] > button:hover,
+section[data-testid="stSidebar"] div[data-testid="stButton"] > button:focus,
+section[data-testid="stSidebar"] div[data-testid="stButton"] > button:active {
+    background-color: #C2410C !important; /* 按下時轉為深橘色 */
     color: #FFFFFF !important;
-}
-
-/* 🌟 側邊欄法人籌碼專屬亮眼卡片外框與加大 Checkbox 勾選方塊 🌟 */
-section[data-testid="stSidebar"] div[data-testid="stCheckbox"] {
-    background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%) !important;
-    border: 2.5px solid #22C55E !important; /* 預設翠綠色醒目外框 */
-    border-radius: 10px !important;
-    padding: 12px 16px !important;
-    margin-top: 6px !important;
-    margin-bottom: 6px !important;
-    box-shadow: 0 0 14px rgba(34, 197, 94, 0.35) !important;
-    transition: all 0.25s ease-in-out !important;
-    cursor: pointer !important;
-}
-
-section[data-testid="stSidebar"] div[data-testid="stCheckbox"]:hover {
-    box-shadow: 0 0 18px rgba(34, 197, 94, 0.55) !important;
-    border-color: #4ADE80 !important;
-}
-
-/* 勾選方塊大幅放大 (大且顯眼，明確表達可點選) */
-section[data-testid="stSidebar"] div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
-    transform: scale(1.45) !important;
-    transform-origin: center center !important;
-    margin-right: 12px !important;
-    cursor: pointer !important;
-}
-
-/* Checkbox 內部原生輸入框相容 */
-section[data-testid="stSidebar"] div[data-testid="stCheckbox"] input[type="checkbox"] {
-    width: 22px !important;
-    height: 22px !important;
-    cursor: pointer !important;
-}
-
-/* 勾選標籤文字放大、加粗與純白高對比 */
-section[data-testid="stSidebar"] div[data-testid="stCheckbox"] label p {
-    font-size: 1.12rem !important;
-    font-weight: 800 !important;
-    color: #FFFFFF !important;
-    line-height: 1.4 !important;
-    cursor: pointer !important;
+    box-shadow: none !important;
 }
 
 /* 5. 【關鍵修正】強制Dataframe內部的Checkbox文字標籤為白色 */
@@ -447,7 +281,7 @@ def get_market_regime():
 # 4. 網頁 UI 與 4 大模式切換
 # ==========================================
 st.title("📡 林家洋技術分析 - 全市場掃描雷達")
-st.markdown("##### 🚀 **v8.5 旗艦版** `(2026-09-17 最新升級)` ｜ 🏛️ 三大法人籌碼動能矩陣・雙軌進場策略・境外IP極速熔斷防護")
+st.markdown("##### 🚀 **v8.4 旗艦版** `(2026-09-16 最新升級)` ｜ 🏛️ 三大法人籌碼矩陣・外資隔日沖警示・高持股微妙空間雙數張獲利體系")
 
 
 tw50_list = list(TW50_MAPPING.keys())
@@ -466,13 +300,15 @@ def sync_watch_list_to_file():
     save_stocks(st.session_state.watch_list)
 
 with st.sidebar:
-    with st.expander("✨ 系統版本：v8.5 旗艦版 (2026-09-17)", expanded=False):
+    with st.expander("✨ 系統版本：v8.4 旗艦版 (2026-09-16)", expanded=False):
         st.markdown("""
-        **【v8.5 核心重大升級摘要】**
-        * ☁️ **境外 IP 極速熔斷防護 (Cloud Fast-Failover)**：完美支援 Streamlit Community Cloud 等境外雲端主機，自動探測證交所防火牆阻擋 (403)，秒級自動降級為「純技術面極速模式」，徹底告別超時休眠卡死！
-        * 🚀 **實戰雙軌進場策略指引 (Dual-Track Entry)**：報表與訊號新增「進場策略指引」。強攻突破首日 09:30 站穩開盤價採「平盤至+1~2檔動態試單」（如陽明、強茂），打破「死等回測錯過大飆股」之逆選擇困境；多頭吞噬轉折則嚴守 1/2 回測承接。
-        * 💎 **外資死存量過濾與動能純淨化**：自動過濾母公司/董監固定股權（如建榮日東紡持股），標註「長期鎖碼無動能」，消除虛假大戶安全感；並優化中小型股隔日沖警戒門檻。
-        * 🏛️ **三大法人模組自由切換開關**：側邊欄新增切換開關，隨時切換純技術面或籌碼整合模式。
+        **【v8.4 核心重大升級摘要】**
+        * 🏛️ **三大法人全自動日報串接**：自動同步證交所 (TWSE T86) 與櫃買中心 (TPEx)，取得外資/投信/自營商進出張數。
+        * 🔥 **土洋合擊波段強攻**：投信連買且外資加碼，推薦評分額外 **+20 分**。
+        * 💎 **投信波段鎖碼**：投信連買或持股創高，推薦評分額外 **+15 分**。
+        * ⚠️ **外資隔日沖疑慮標籤**：前日外資脈衝暴買佔比 > 35%，自動標註警語「T+1 衝高 +5%~+8% 堅決鎖利」。
+        * ⚡ **高法人重倉雙數張鐵律**：法人持股 >= 20% 標的（如強茂 9/16 實戰），第 1 張衝高鎖利、第 2 張成本保本博漲停！
+        * 📊 **CSV 報表匯出擴充**：全自動納入三大法人狀態與進出張數。
         """)
     st.header("⚙️ 掃描模式設定")
     scan_mode = st.radio(
@@ -550,59 +386,25 @@ with st.sidebar:
 st.sidebar.markdown("---")
 
 # ==========================================
-# 5. 批次運算與持久化儲存核心 (側邊欄操作與執行區)
+# 5. 批次運算與持久化儲存核心 (斷點續傳升級版 - 側邊欄修正)
 # ==========================================
-st.sidebar.header("🎯 掃描執行與操作")
+st.sidebar.info("""
+⏰ **盤後資料取得時程指南：**
+* 🕒 **15:30 後**：可取得當日收盤與外資/投信買賣超資料 (流量)。
+* 🕔 **17:00 後**：證交所結算完畢，可取得當日最完整外資持股總數與持股比率 (存量)。
+""")
+analyze_btn = st.sidebar.button("🚀 開始全新批次掃描", width="stretch")
 
-# --- A. 三大法人籌碼分析開關 (亮眼邊框卡片 + 放大勾選框) ---
-enable_inst = st.sidebar.checkbox(
-    "🏛️ 啟用三大法人籌碼分析 (TWSE/TPEx)", 
-    value=True, 
-    help="【境外雲端主機重要提示】：若在 Streamlit Community Cloud (境外主機) 運行，因台灣證交所防火牆阻擋國外 IP (403)，系統已內建自動極速熔斷；您亦可直接取消此勾選，切換為「純技術面極速掃描模式」，大幅提升全市場掃描速度！"
-)
-if enable_inst:
-    st.sidebar.markdown("""
-    <style>
-    section[data-testid="stSidebar"] div[data-testid="stCheckbox"] {
-        border: 2.5px solid #22C55E !important;
-        box-shadow: 0 0 14px rgba(34, 197, 94, 0.4) !important;
-    }
-    </style>
-    <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.35); border-radius: 6px; padding: 8px 12px; margin-top: -2px; margin-bottom: 12px;">
-        <span style="color: #4ADE80; font-size: 0.92rem; font-weight: bold;">🟢 全功能模式啟動</span>
-        <p style="color: #CBD5E1; font-size: 0.84rem; margin: 3px 0 0 0; line-height: 1.35;">
-            整合三大法人買賣超、土洋合擊、投信鎖碼與外資持股（適合台灣本地 IP；15:30 買賣超結算，17:00 外資持股完整更新）。
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-else:
-    st.sidebar.markdown("""
-    <style>
-    section[data-testid="stSidebar"] div[data-testid="stCheckbox"] {
-        border: 2.5px solid #F59E0B !important;
-        box-shadow: 0 0 14px rgba(245, 158, 11, 0.4) !important;
-    }
-    </style>
-    <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 6px; padding: 8px 12px; margin-top: -2px; margin-bottom: 12px;">
-        <span style="color: #FBBF24; font-size: 0.92rem; font-weight: bold;">⚡ 純技術面極速模式</span>
-        <p style="color: #CBD5E1; font-size: 0.84rem; margin: 3px 0 0 0; line-height: 1.35;">
-            跳過法人連線等待，全市場掃描提速 5～10 倍，避免境外雲端主機 (Streamlit Cloud) 逾時休眠！
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-# --- B. 執行按鈕區 (位於籌碼分析正下方) ---
-analyze_btn = st.sidebar.button("🚀 開始全新批次掃描", type="primary", key="btn_run_scan", width="stretch")
-
-# 👇 偵測備份檔，提供下載與接續按鈕 👇
+# 👇 偵測備份檔，提供下載與接續按鈕 (改為側邊欄垂直排列) 👇
 resume_btn = False
 if os.path.exists("backup_temp_results.csv"):
     st.sidebar.warning("⚠️ 系統偵測到前次未完成的掃描備份！")
-    resume_btn = st.sidebar.button("▶️ 接續未完成的掃描 (斷點續傳)", key="btn_resume_scan", width="stretch")
+    resume_btn = st.sidebar.button("▶️ 接續未完成的掃描 (斷點續傳)", width="stretch")
     with open("backup_temp_results.csv", "rb") as f:
         st.sidebar.download_button("📥 先下載目前已備份進度 (CSV)", f, file_name="中斷備份檔.csv", width="stretch")
 
-if st.sidebar.button("🧹 強制清除系統快取", type="secondary", key="btn_clear_cache", width="stretch"):
+st.sidebar.markdown("---") 
+if st.sidebar.button("🧹 強制清除系統快取", width="stretch"):
     st.cache_data.clear()
     st.session_state.scan_results = {}
     
@@ -623,21 +425,6 @@ if st.sidebar.button("🧹 強制清除系統快取", type="secondary", key="btn
     st.sidebar.success("✅ 所有本機與記憶體快取已徹底清除！")
     time.sleep(0.5)
     st.rerun()
-
-st.sidebar.markdown("---")
-
-# --- C. 盤後資訊與權威指引區 (移至操作按鈕區下方) ---
-st.sidebar.info("""
-⏰ **盤後資料取得時程指南：**
-* 🕒 **15:30 後**：可取得當日收盤與外資/投信買賣超資料 (流量)。
-* 🕔 **17:00 後**：證交所結算完畢，可取得當日最完整外資持股總數與持股比率 (存量)。
-""")
-
-st.sidebar.markdown("""
-📌 **【實戰交易決策權威定位】**
-* 💻 **本機環境 (台灣本地 IP)**：**【唯一實盤決策依據】**。收盤 17:00 後執行，完整獲取三大法人買賣超、外資總持股與投信 60 日鎖碼（含法人加減分 ±10~20 分），作為次日 TOP 5 選股與雙軌進場掛單之權威基準。
-* ☁️ **雲端環境 (Streamlit Cloud 境外)**：**【行動外出型態快篩】**。自動啟用極速熔斷（純技術面），全市場掃描僅需數分鐘，分數僅為原始技術型態基底分（未含法人加成），供隨時檢視型態，切勿作為次日實戰下單之單一依據！
-""")
 
 # 定義承接資料的容器
 all_results = []
@@ -685,13 +472,7 @@ if analyze_btn or resume_btn:
         # 🌟 關鍵修復：yfinance 的 end 參數為 Exclusive (不包含該日)，因此必須 +1 天才能正確抓取今日最新收盤資料！
         end_date_str = (datetime.now(tz_taipei) + timedelta(days=1)).strftime('%Y-%m-%d')
         start_date_str = (datetime.now(tz_taipei) - timedelta(days=400)).strftime('%Y-%m-%d')
-        fetcher = TaiwanStockDataFetcher(enable_institutional=enable_inst)
-        if not enable_inst:
-            st.info("⚡ **【純技術面極速模式運行中】**：已依設定略過三大法人籌碼連線，專注林家洋 K 線型態與均線多空共振，全市場掃描極速進行！")
-        elif fetcher.twse_blocked:
-            st.warning("☁️ **【境外雲端主機自動保護已觸發】**：系統偵測到當前伺服器 IP 受台灣證交所防火牆限制 (403 境外阻擋)，已自動啟動「極速熔斷防護」，略過法人連線以確保全市場掃描順暢完成不休眠！")
-        else:
-            st.success("🏛️ **【三大法人籌碼矩陣模式啟動】**：已連線證交所 (TWSE) 與櫃買中心 (TPEx)，將自動運算土洋合擊、投信鎖碼與外資持股動能！")
+        fetcher = TaiwanStockDataFetcher()
 
         def process_single_stock(stock_id):
             time.sleep(random.uniform(0.3, 0.7))
@@ -708,54 +489,36 @@ if analyze_btn or resume_btn:
                     formatted_signal = get_formatted_signal(score, raw_signal, above_ma60)
                     
                     market_date_val = str(df.index[-1]).split(' ')[0] if len(df) > 0 else '未知'
-                    
-                    # 判斷是否為未啟用或被熔斷環境，避免呈現 0 張造成誤解
-                    if not enable_inst:
-                        inst_tag = '⚡ 未啟用法人 (純技術面)'
-                        foreign_lots = '-'
-                        trust_lots = '-'
-                        foreign_hold_lots = '-'
-                        f_pct_str = '-'
-                        trust_accum_val = '-'
-                    elif fetcher.twse_blocked:
-                        inst_tag = '☁️ 境外受限 (自動熔斷)'
-                        foreign_lots = '-'
-                        trust_lots = '-'
-                        foreign_hold_lots = '-'
-                        f_pct_str = '-'
-                        trust_accum_val = '-'
+                    inst_tag = latest.get('InstitutionalTag', '➖ 一般籌碼')
+                    foreign_lots = int(round(latest.get('Foreign_Buy', 0) / 1000.0)) if 'Foreign_Buy' in latest else 0
+                    trust_lots = int(round(latest.get('Trust_Buy', 0) / 1000.0)) if 'Trust_Buy' in latest else 0
+
+                    # 外資持有總張數
+                    f_hold_shares = latest.get('Foreign_Hold_Shares', None)
+                    if f_hold_shares is not None and not pd.isna(f_hold_shares) and str(f_hold_shares).strip() not in ['None', '', '-']:
+                        try: foreign_hold_lots = int(round(float(f_hold_shares) / 1000.0))
+                        except: foreign_hold_lots = '-'
                     else:
-                        inst_tag = latest.get('InstitutionalTag', '➖ 一般籌碼')
-                        foreign_lots = int(round(latest.get('Foreign_Buy', 0) / 1000.0)) if 'Foreign_Buy' in latest else 0
-                        trust_lots = int(round(latest.get('Trust_Buy', 0) / 1000.0)) if 'Trust_Buy' in latest else 0
+                        foreign_hold_lots = '-'
 
-                        # 外資持有總張數
-                        f_hold_shares = latest.get('Foreign_Hold_Shares', None)
-                        if f_hold_shares is not None and not pd.isna(f_hold_shares) and str(f_hold_shares).strip() not in ['None', '', '-']:
-                            try: foreign_hold_lots = int(round(float(f_hold_shares) / 1000.0))
-                            except: foreign_hold_lots = '-'
-                        else:
-                            foreign_hold_lots = '-'
+                    # 外資持股率%
+                    f_pct_val = latest.get('Foreign_Hold_Pct', None)
+                    if f_pct_val is not None and not pd.isna(f_pct_val) and str(f_pct_val).strip() not in ['None', '', '-']:
+                        try: f_pct_str = f"{float(f_pct_val):.2f}%"
+                        except: f_pct_str = "-"
+                    else:
+                        f_pct_str = "-"
 
-                        # 外資持股率%
-                        f_pct_val = latest.get('Foreign_Hold_Pct', None)
-                        if f_pct_val is not None and not pd.isna(f_pct_val) and str(f_pct_val).strip() not in ['None', '', '-']:
-                            try: f_pct_str = f"{float(f_pct_val):.2f}%"
-                            except: f_pct_str = "-"
-                        else:
-                            f_pct_str = "-"
+                    # 🌟 方案 A：投信波段累積鎖碼張數（近 60 日推估）
+                    t_accum_val = latest.get('Trust_60D_Accum', None)
+                    if t_accum_val is not None and not pd.isna(t_accum_val) and str(t_accum_val).strip() not in ['None', '', '-']:
+                        try:
+                            trust_accum_val = int(round(float(t_accum_val)))
+                        except:
+                            trust_accum_val = 0
+                    else:
+                        trust_accum_val = trust_lots if trust_lots != 0 else 0
 
-                        # 🌟 方案 A：投信波段累積鎖碼張數（近 60 日推估）
-                        t_accum_val = latest.get('Trust_60D_Accum', None)
-                        if t_accum_val is not None and not pd.isna(t_accum_val) and str(t_accum_val).strip() not in ['None', '', '-']:
-                            try:
-                                trust_accum_val = int(round(float(t_accum_val)))
-                            except:
-                                trust_accum_val = 0
-                        else:
-                            trust_accum_val = trust_lots if trust_lots != 0 else 0
-
-                    entry_strat = latest.get('EntryStrategy', '🛡️ 軌道 B：轉折防守 (回測 1/2 處分批承接)')
                     return {
                         '代碼': stock_id,
                         '名稱': stock_name if stock_name else "-",
@@ -767,7 +530,6 @@ if analyze_btn or resume_btn:
                         '外資持股(張)': foreign_hold_lots,
                         '外資持股率%': f_pct_str,
                         '投信波段累積鎖碼張數（近 60 日推估）': trust_accum_val,
-                        '進場策略指引': entry_strat,
                         '最新形態': formatted_signal,
                         '推薦分數': score,
                         '季線(MA60)': latest['MA60'],
@@ -897,19 +659,7 @@ if analyze_btn or resume_btn:
 # ==========================================
 # 6. 說明折疊面板與結果呈現
 # ==========================================
-# 🌟 醒目戰術手冊卡片 (大字體、亮橘強調邊框) 🌟
-st.markdown("""
-<div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-left: 6px solid #EA580C; padding: 14px 18px; border-radius: 8px; margin: 10px 0 8px 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);">
-    <div style="font-size: 1.22rem; font-weight: 800; color: #FB923C; display: flex; align-items: center; gap: 8px;">
-        <span>📖 林家洋技術分析實戰戰術手冊 (v8.5 雙軌進場旗艦版)</span>
-    </div>
-    <div style="font-size: 0.95rem; color: #CBD5E1; margin-top: 4px;">
-        涵蓋 <b>大底破繭、順勢強攻、多頭吞噬</b> 量化定義，<b>軌道A動態試單 vs 軌道B回測承接</b> 雙軌進場掛單原則，以及 <b>四大防線嚴格風控紀律</b>。（預設折疊收合，請點擊下方展開詳細研讀）
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-with st.expander("👉 點擊展開／收合【完整實戰戰術手冊與量化規則指南】", expanded=False):
+with st.expander("📖 林家洋技術分析型態、TOP 5 前置濾網與四大防線戰術指南 (2026 v8.3 實戰週線與破億防護旗艦版)", expanded=True):
     st.markdown('''
     ### 🎯 一、 核心型態判讀與實戰戰術指引 (含林家洋大底破繭與多週期趨勢風控)
     * 👑 **大底破繭 (長期整理突破)**：40～60 天以上長期橫盤打底（振幅 <= 22%）、月線與季線緊密糾結（<= 4.0%）後，首度帶量長紅突破箱頂第一根！
@@ -1010,13 +760,12 @@ format_dict = {
     '外資持股(張)': fmt_volume,
     '外資持股率%': lambda x: str(x) if x is not None and not pd.isna(x) and str(x).strip() != '' else '-',
     '投信波段累積鎖碼張數（近 60 日推估）': fmt_lots,
-    '進場策略指引': lambda x: str(x) if x is not None and not pd.isna(x) and str(x).strip() != '' else '-',
     '季線(MA60)': fmt_price,
     '推薦分數': fmt_score
 }
 
-# 【修正2】定義期望的欄位顯示順序 (完整呈現進場策略指引、三大法人狀態與籌碼數據)
-desired_cols = ['名稱', '收盤價', '成交量', '最新形態', '進場策略指引', '推薦分數', '三大法人狀態', '外資買賣(張)', '投信買賣(張)', '外資持股(張)', '外資持股率%', '投信波段累積鎖碼張數（近 60 日推估）', '季線(MA60)', '季線之上', '資料來源']
+# 【修正2】定義期望的欄位顯示順序 (完整呈現外資買賣、投信買賣、外資持股張數、外資持股率%與投信波段累積鎖碼張數（近 60 日推估）)
+desired_cols = ['名稱', '收盤價', '成交量', '最新形態', '推薦分數', '三大法人狀態', '外資買賣(張)', '投信買賣(張)', '外資持股(張)', '外資持股率%', '投信波段累積鎖碼張數（近 60 日推估）', '季線(MA60)', '季線之上', '資料來源']
 
 current_cache = st.session_state.scan_results.get(scan_mode, None)
 
@@ -1051,20 +800,6 @@ if current_cache:
     else:
         st.info(f"📁 **【已自動載入歷史快取】** ｜ 存檔掃描時間：`{scan_time}` ｜ 市場數據基準日：`{market_data_date} 盤後結算`")
     
-    # 🌟 動態判斷當前快取是否有法人數據，給出精準評分提示 🌟
-    first_inst_tag = ''
-    if current_cache.get('data'):
-        first_inst_tag = str(current_cache['data'][0].get('三大法人狀態', ''))
-    elif current_cache.get('buy'):
-        first_inst_tag = str(current_cache['buy'][0].get('三大法人狀態', ''))
-        
-    is_pure_tech_mode = ('未啟用' in first_inst_tag) or ('境外受限' in first_inst_tag) or (not enable_inst)
-    
-    if is_pure_tech_mode:
-        st.info("💡 **【評分標準提示：純技術面模式】** 目前推薦分數為 **100% 純技術面基底分數**（大底破繭 120分、突破 100分、吞噬 75分），**未包含三大法人籌碼加成 (±10~20分)**。法人相關欄位標記為未啟用。若需作為明日實盤下單決策，請以 **本機環境 17:00 後之完整法人掃描數據** 為最終依據！")
-    else:
-        st.success("💡 **【評分標準提示：三大法人籌碼矩陣模式】** 目前推薦分數已整合 **「技術面型態分 ＋ 三大法人動能加減分 (最高 +20分 / 最低 -20分)」**。若個股具備土洋合擊 (+20分) 或投信鎖碼 (+15分)，將優先於榜單拔得頭籌！")
-
     if current_cache["type"] == "single":
         st.subheader(f"📋 {scan_mode.split('：')[0]} 掃描結果 (完整列出)")
         st.caption("💡 **法人籌碼數據權威說明**：依主管機關法規，『外資持股張數』與『外資持股率%』每日由證交所/櫃買中心依法公布；『投信』官方每日僅公告買賣超張數，未公開持股庫存總量，本系統特別實裝『投信波段累積鎖碼張數（近 60 日推估）』，以近一季（60 個交易日）波段實質淨買賣超滾動累計，精準量化投信最新季底作帳與認養動能！")

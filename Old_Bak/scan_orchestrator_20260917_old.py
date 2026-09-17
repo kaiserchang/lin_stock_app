@@ -2,20 +2,14 @@ import io
 import csv
 import pandas as pd
 import numpy as np
-try:
-    import pandas_ta as ta
-except ImportError:
-    ta = None
+import pandas_ta as ta
 import logging
 import sys
 import json
 import time
 import requests
 from datetime import datetime, timedelta
-try:
-    import yfinance as yf
-except ImportError:
-    yf = None
+import yfinance as yf
 import re
 
 # 設定日誌
@@ -25,39 +19,9 @@ logger = logging.getLogger(__name__)
 from analysis_engine import LinJiaYangEngine
 
 class TaiwanStockDataFetcher:
-    def __init__(self, enable_institutional=True):
-        self.enable_institutional = enable_institutional
+    def __init__(self):
         self.institutional_cache = {}
         self.trust_60d_cache = {}
-        self.twse_blocked = False
-        self.finmind_blocked = False
-        self.finmind_fail_count = 0
-        
-        # 雲端境外 IP 探針檢測
-        if not self.enable_institutional:
-            self.twse_blocked = True
-            logger.info("三大法人模組已手動關閉：啟動純技術面極速掃描模式 (完全跳過 TWSE/TPEx/FinMind 查詢)")
-        else:
-            self._probe_twse_status()
-
-    def _probe_twse_status(self):
-        """
-        ⚡ 雲端主機境外 IP 快速連線探針 (Fast Failover Probe)
-        在啟動時以極短逾時 (1.5秒) 探測證交所 API。若偵測到境外阻擋 (403 Forbidden / 連線逾時)，
-        立即啟動自動極速熔斷，後續所有法人連線 0 毫秒略過，徹底解決 Streamlit Cloud 卡頓休眠問題！
-        """
-        try:
-            probe_session = requests.Session()
-            probe_session.trust_env = False
-            probe_url = 'https://www.twse.com.tw/rwd/zh/fund/T86?response=json&date=20260915&selectType=ALLBUT0999'
-            h = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'}
-            resp = probe_session.head(probe_url, headers=h, timeout=1.5)
-            if resp.status_code in [403, 401, 502, 503]:
-                self.twse_blocked = True
-                logger.warning(f"⚡ 偵測到證交所防火牆阻擋當前 IP (HTTP {resp.status_code}，境外主機如 Streamlit Cloud)！已自動啟動【雲端極速熔斷】：略過法人 API 查詢，保障全市場掃描極速完成！")
-        except Exception as e:
-            self.twse_blocked = True
-            logger.warning(f"⚡ 證交所 API 連線探針逾時或受限 ({e})！已自動啟動【雲端極速熔斷】：略過法人 API 查詢，保障全市場掃描極速完成！")
     
     def get_taiwan_stock_list(self):
         """優先從公開市場資料來源組建台股清單，無法取得時才使用備用清單。"""
@@ -341,19 +305,17 @@ class TaiwanStockDataFetcher:
                 if not df.empty and len(df) > 0:
                     break
 
-            # 🌟 啟動多層級備援機制 (境外受限環境自動略過 TWSE/TPEx 備援以防卡頓) 🌟
+            # 🌟 啟動多層級備援機制 🌟
             if df.empty or len(df) == 0:
-                if not self.twse_blocked:
-                    logger.warning(f"Yahoo failed for {stock_id}, switching to TWSE fallback.")
-                    df = self.get_stock_daily_data_twse(stock_id, start_date, end_date)
-                    data_source = "TWSE"
-                    
-                    if df.empty or len(df) == 0:
-                        logger.warning(f"TWSE failed for {stock_id}, switching to TPEx fallback.")
-                        df = self.get_stock_daily_data_tpex(stock_id, start_date, end_date)
-                        data_source = "TPEx"
-                else:
-                    logger.debug(f"Yahoo 無資料且處於境外 IP 阻擋環境，略過 TWSE/TPEx 備援以防逾時卡頓: {stock_id}")
+                logger.warning(f"Yahoo failed for {stock_id}, switching to TWSE fallback.")
+                df = self.get_stock_daily_data_twse(stock_id, start_date, end_date)
+                data_source = "TWSE"
+                
+                # 如果證交所也找不到 (代表是上櫃股)，啟用 TPEx 終極備援
+                if df.empty or len(df) == 0:
+                    logger.warning(f"TWSE failed for {stock_id}, switching to TPEx fallback.")
+                    df = self.get_stock_daily_data_tpex(stock_id, start_date, end_date)
+                    data_source = "TPEx"
 
                 if df.empty or len(df) == 0:
                     return pd.DataFrame()
@@ -370,35 +332,32 @@ class TaiwanStockDataFetcher:
             if len(df) < 20:
                 return pd.DataFrame()
 
-            # 🌟 整合三大法人每日買賣超與外資持股總量數據 (支援境外極速熔斷) 🌟
-            df['Foreign_Buy'] = 0
-            df['Trust_Buy'] = 0
-            df['Dealer_Buy'] = 0
-            df['Foreign_Hold_Shares'] = None
-            df['Foreign_Hold_Pct'] = None
-            df['Trust_Hold_Shares'] = None
-            df['Trust_60D_Accum'] = None
+            # 🌟 整合三大法人每日買賣超與外資持股總量數據 🌟
+            try:
+                target_date_str = df.index[-1].strftime('%Y%m%d') if len(df) > 0 else None
+                inst_map = self.get_institutional_data_for_date(target_date_str)
+                stock_inst = inst_map.get(stock_id, {})
+                df['Foreign_Buy'] = 0
+                df['Trust_Buy'] = 0
+                df['Dealer_Buy'] = 0
+                df['Foreign_Hold_Shares'] = None
+                df['Foreign_Hold_Pct'] = None
+                df['Trust_Hold_Shares'] = None
+                df['Trust_60D_Accum'] = None
+                if not df.empty and stock_inst:
+                    df.iloc[-1, df.columns.get_loc('Foreign_Buy')] = stock_inst.get('Foreign_Buy', 0)
+                    df.iloc[-1, df.columns.get_loc('Trust_Buy')] = stock_inst.get('Trust_Buy', 0)
+                    df.iloc[-1, df.columns.get_loc('Dealer_Buy')] = stock_inst.get('Dealer_Buy', 0)
+                    df.iloc[-1, df.columns.get_loc('Foreign_Hold_Shares')] = stock_inst.get('Foreign_Hold_Shares', None)
+                    df.iloc[-1, df.columns.get_loc('Foreign_Hold_Pct')] = stock_inst.get('Foreign_Hold_Pct', None)
+                    df.iloc[-1, df.columns.get_loc('Trust_Hold_Shares')] = stock_inst.get('Trust_Hold_Shares', None)
 
-            if self.enable_institutional and not self.twse_blocked:
-                try:
-                    target_date_str = df.index[-1].strftime('%Y%m%d') if len(df) > 0 else None
-                    inst_map = self.get_institutional_data_for_date(target_date_str)
-                    stock_inst = inst_map.get(stock_id, {})
-                    if not df.empty and stock_inst:
-                        df.iloc[-1, df.columns.get_loc('Foreign_Buy')] = stock_inst.get('Foreign_Buy', 0)
-                        df.iloc[-1, df.columns.get_loc('Trust_Buy')] = stock_inst.get('Trust_Buy', 0)
-                        df.iloc[-1, df.columns.get_loc('Dealer_Buy')] = stock_inst.get('Dealer_Buy', 0)
-                        df.iloc[-1, df.columns.get_loc('Foreign_Hold_Shares')] = stock_inst.get('Foreign_Hold_Shares', None)
-                        df.iloc[-1, df.columns.get_loc('Foreign_Hold_Pct')] = stock_inst.get('Foreign_Hold_Pct', None)
-                        df.iloc[-1, df.columns.get_loc('Trust_Hold_Shares')] = stock_inst.get('Trust_Hold_Shares', None)
-
-                    # 🌟 方案 A：計算投信波段累積鎖碼張數 (近 60 日推估) 🌟
-                    if not self.finmind_blocked:
-                        trust_60d_lots = self.get_trust_60d_accum(stock_id, df)
-                        if trust_60d_lots is not None:
-                            df.iloc[-1, df.columns.get_loc('Trust_60D_Accum')] = trust_60d_lots
-                except Exception as e:
-                    logger.debug(f"整合三大法人數據至 {stock_id} 失敗: {e}")
+                # 🌟 方案 A：計算投信波段累積鎖碼張數 (近 60 日推估) 🌟
+                trust_60d_lots = self.get_trust_60d_accum(stock_id, df)
+                if trust_60d_lots is not None:
+                    df.iloc[-1, df.columns.get_loc('Trust_60D_Accum')] = trust_60d_lots
+            except Exception as e:
+                logger.debug(f"整合三大法人數據至 {stock_id} 失敗: {e}")
 
             return df
             
@@ -407,8 +366,8 @@ class TaiwanStockDataFetcher:
             return pd.DataFrame()
 
 
-    def _parse_twse_qfii(self, text, d=None):
-        """解析台灣證交所 MI_QFIIS (支援 JSON 與 CSV 雙重結構，含發行股數與基準日)"""
+    def _parse_twse_qfii(self, text):
+        """解析台灣證交所 MI_QFIIS (支援 JSON 與 CSV 雙重結構)"""
         records = {}
         # 1. 嘗試以 JSON 解析 (相容 tables、data、aaData 結構)
         try:
@@ -429,13 +388,11 @@ class TaiwanStockDataFetcher:
                     fields = data.get('fields', [])
 
             if rows:
-                sid_idx, shs_idx, pct_idx, issued_idx = 0, 5, 7, 3
+                sid_idx, shs_idx, pct_idx = 0, 5, 7
                 for idx, fld in enumerate(fields):
                     f_str = str(fld).strip()
                     if '代號' in f_str or 'Code' in f_str:
                         sid_idx = idx
-                    elif '發行股數' in f_str:
-                        issued_idx = idx
                     elif '全體外資及陸資持有股數' in f_str or '持有股數' in f_str or '持有單位數' in f_str:
                         shs_idx = idx
                     elif '全體外資及陸資持股比率' in f_str or '持股比率' in f_str or '持股比例' in f_str:
@@ -444,16 +401,12 @@ class TaiwanStockDataFetcher:
                 for row in rows:
                     if len(row) > max(sid_idx, shs_idx, pct_idx):
                         sid = str(row[sid_idx]).strip()
-                        issued = None
-                        if issued_idx is not None and len(row) > issued_idx:
-                            try: issued = int(str(row[issued_idx]).replace(',', '').replace(' ', ''))
-                            except: issued = None
                         try: shs = int(str(row[shs_idx]).replace(',', '').replace(' ', ''))
                         except: shs = None
                         try: pct = float(str(row[pct_idx]).replace(',', '').replace('%', '').strip())
                         except: pct = None
                         if sid and (sid.isdigit() or len(sid) >= 4):
-                            records[sid] = {'shares': shs, 'pct': pct, 'issued': issued, 'date': d}
+                            records[sid] = {'shares': shs, 'pct': pct}
                 if records:
                     return records
         except Exception:
@@ -463,7 +416,7 @@ class TaiwanStockDataFetcher:
         try:
             reader = csv.reader(io.StringIO(text))
             header_found = False
-            sid_idx, shs_idx, pct_idx, issued_idx = 0, 5, 7, 3
+            sid_idx, shs_idx, pct_idx = 0, 5, 7
             for row in reader:
                 if not row: continue
                 row_str = ' '.join(row)
@@ -471,7 +424,6 @@ class TaiwanStockDataFetcher:
                     for idx, col in enumerate(row):
                         c = col.strip()
                         if '代號' in c: sid_idx = idx
-                        elif '發行股數' in c: issued_idx = idx
                         elif '全體外資及陸資持有股數' in c or '持有股數' in c: shs_idx = idx
                         elif '全體外資及陸資持股比率' in c or '持股比率' in c: pct_idx = idx
                     header_found = True
@@ -479,15 +431,11 @@ class TaiwanStockDataFetcher:
                 if header_found and len(row) > max(sid_idx, shs_idx, pct_idx):
                     sid = row[sid_idx].strip().replace('=', '').replace('"', '')
                     if sid and (sid.isdigit() or len(sid) >= 4):
-                        issued = None
-                        if issued_idx is not None and len(row) > issued_idx:
-                            try: issued = int(row[issued_idx].replace(',', '').strip())
-                            except: issued = None
                         try: shs = int(row[shs_idx].replace(',', '').strip())
                         except: shs = None
                         try: pct = float(row[pct_idx].replace(',', '').replace('%', '').strip())
                         except: pct = None
-                        records[sid] = {'shares': shs, 'pct': pct, 'issued': issued, 'date': d}
+                        records[sid] = {'shares': shs, 'pct': pct}
             if records:
                 return records
         except Exception:
@@ -495,8 +443,8 @@ class TaiwanStockDataFetcher:
 
         return records
 
-    def _parse_tpex_qfii(self, text, d=None):
-        """解析櫃買中心 QFII 外資持股 (支援 JSON 與 CSV 雙重結構，含發行股數與基準日)"""
+    def _parse_tpex_qfii(self, text):
+        """解析櫃買中心 QFII 外資持股 (支援 JSON 與 CSV 雙重結構)"""
         records = {}
         # 1. 嘗試以 JSON 解析
         try:
@@ -515,11 +463,10 @@ class TaiwanStockDataFetcher:
                     fields = data.get('fields', [])
 
             if rows:
-                sid_idx, shs_idx, pct_idx, issued_idx = None, None, None, None
+                sid_idx, shs_idx, pct_idx = None, None, None
                 for idx, fld in enumerate(fields):
                     f_str = str(fld).strip()
                     if '代號' in f_str: sid_idx = idx
-                    elif '發行股數' in f_str: issued_idx = idx
                     elif '持有股數' in f_str or '持有單位數' in f_str: shs_idx = idx
                     elif '持股比率' in f_str or '持股比例' in f_str: pct_idx = idx
 
@@ -535,19 +482,12 @@ class TaiwanStockDataFetcher:
                                 break
                     if not sid: continue
 
-                    shs, pct, issued = None, None, None
-                    if issued_idx is not None and len(row) > issued_idx:
-                        try: issued = int(str(row[issued_idx]).replace(',', '').strip())
-                        except: pass
-                    elif len(row) >= 5:
-                        try: issued = int(str(row[4]).replace(',', '').strip())
-                        except: pass
-
+                    shs, pct = None, None
                     if shs_idx is not None and len(row) > shs_idx:
                         try: shs = int(str(row[shs_idx]).replace(',', '').strip())
                         except: pass
                     elif len(row) >= 7:
-                        try: shs = int(str(row[6]).replace(',', '').strip())
+                        try: shs = int(str(row[5]).replace(',', '').strip())
                         except: pass
 
                     if pct_idx is not None and len(row) > pct_idx:
@@ -559,7 +499,7 @@ class TaiwanStockDataFetcher:
                             try: pct = float(str(row[6]).replace(',', '').replace('%', '').strip())
                             except: pass
 
-                    records[sid] = {'shares': shs, 'pct': pct, 'issued': issued, 'date': d}
+                    records[sid] = {'shares': shs, 'pct': pct}
                 if records:
                     return records
         except Exception:
@@ -569,7 +509,7 @@ class TaiwanStockDataFetcher:
         try:
             reader = csv.reader(io.StringIO(text))
             header_found = False
-            sid_idx, shs_idx, pct_idx, issued_idx = None, None, None, None
+            sid_idx, shs_idx, pct_idx = None, None, None
             for row in reader:
                 if not row: continue
                 row_str = ' '.join(row)
@@ -577,7 +517,6 @@ class TaiwanStockDataFetcher:
                     for idx, col in enumerate(row):
                         c = col.strip()
                         if '代號' in c: sid_idx = idx
-                        elif '發行股數' in c: issued_idx = idx
                         elif '持有股數' in c: shs_idx = idx
                         elif '持股比率' in c or '持股比例' in c: pct_idx = idx
                     header_found = True
@@ -591,17 +530,14 @@ class TaiwanStockDataFetcher:
                                 sid = s
                                 break
                     if not sid: continue
-                    shs, pct, issued = None, None, None
-                    if issued_idx is not None and len(row) > issued_idx:
-                        try: issued = int(row[issued_idx].replace(',', '').strip())
-                        except: pass
+                    shs, pct = None, None
                     if shs_idx is not None and len(row) > shs_idx:
                         try: shs = int(row[shs_idx].replace(',', '').strip())
                         except: pass
                     if pct_idx is not None and len(row) > pct_idx:
                         try: pct = float(row[pct_idx].replace(',', '').replace('%', '').strip())
                         except: pass
-                    records[sid] = {'shares': shs, 'pct': pct, 'issued': issued, 'date': d}
+                    records[sid] = {'shares': shs, 'pct': pct}
             if records:
                 return records
         except Exception:
@@ -610,7 +546,7 @@ class TaiwanStockDataFetcher:
         return records
 
     def _fetch_foreign_holding_matrix(self, session, headers, query_date_str, prev_date_str):
-        """全方位多重備援抓取上市與上櫃全體外資持股總數與持股比率 (支援日期標註)"""
+        """全方位多重備援抓取上市與上櫃全體外資持股總數與持股比率"""
         foreign_holdings = {}
         ts = int(time.time() * 1000)
 
@@ -633,50 +569,37 @@ class TaiwanStockDataFetcher:
             'X-Requested-With': 'XMLHttpRequest',
         }
 
-        twse_date_succeeded = False
+        twse_candidates = []
+        # 1. 優先嘗試各交易日的標準 ALLBUT0999 (證交所標準全部不含權證)
         for d in dates_to_try:
-            if not d: continue
-            cands = [
-                f'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=json&date={d}&selectType=ALLBUT0999&_={ts}',
-                f'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=json&date={d}&_={ts}',
-                f'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=csv&date={d}&selectType=ALLBUT0999',
-                f'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=csv&date={d}',
-                f'https://www.twse.com.tw/fund/MI_QFIIS?response=json&date={d}&selectType=ALLBUT0999',
-                f'https://www.twse.com.tw/fund/MI_QFIIS?response=json&date={d}',
-            ]
-            for url in cands:
-                try:
-                    res = session.get(url, headers=twse_headers, timeout=12)
-                    if res.status_code == 200:
-                        text = res.text.strip()
-                        parsed = self._parse_twse_qfii(text, d)
-                        if parsed and len(parsed) > 0:
-                            foreign_holdings.update(parsed)
-                            logger.info(f"TWSE 外資持股成功取得 {len(parsed)} 檔 (基準日: {d}, via {url[:65]}...)")
-                            twse_date_succeeded = True
-                            break
-                except Exception as e:
-                    logger.debug(f"TWSE QFIIS 端點嘗試失敗 ({url[:50]}...): {e}")
-            if twse_date_succeeded:
-                break
+            twse_candidates.append(f'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=json&date={d}&selectType=ALLBUT0999&_={ts}')
+            twse_candidates.append(f'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=json&date={d}&_={ts}')
+            twse_candidates.append(f'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=csv&date={d}&selectType=ALLBUT0999')
+            twse_candidates.append(f'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=csv&date={d}')
+            twse_candidates.append(f'https://www.twse.com.tw/fund/MI_QFIIS?response=json&date={d}&selectType=ALLBUT0999')
+            twse_candidates.append(f'https://www.twse.com.tw/fund/MI_QFIIS?response=json&date={d}')
+        
+        # 2. 備援嘗試不帶日期參數之即時派發端點
+        twse_candidates.extend([
+            f'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=json&selectType=ALLBUT0999&_={ts}',
+            f'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=json&_={ts}',
+            'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=csv&selectType=ALLBUT0999',
+            'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=csv',
+        ])
 
-        if not twse_date_succeeded:
-            for url in [
-                f'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=json&selectType=ALLBUT0999&_={ts}',
-                f'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=json&_={ts}',
-                'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=csv&selectType=ALLBUT0999',
-                'https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?response=csv',
-            ]:
-                try:
-                    res = session.get(url, headers=twse_headers, timeout=12)
-                    if res.status_code == 200:
-                        text = res.text.strip()
-                        parsed = self._parse_twse_qfii(text, None)
-                        if parsed and len(parsed) > 0:
-                            foreign_holdings.update(parsed)
-                            break
-                except Exception:
-                    pass
+        for url in twse_candidates:
+            if not url: continue
+            try:
+                res = session.get(url, headers=twse_headers, timeout=12)
+                if res.status_code == 200:
+                    text = res.text.strip()
+                    parsed = self._parse_twse_qfii(text)
+                    if parsed and len(parsed) > 0:
+                        foreign_holdings.update(parsed)
+                        logger.info(f"TWSE 外資持股成功取得 {len(parsed)} 檔 (via {url[:65]}...)")
+                        break
+            except Exception as e:
+                logger.debug(f"TWSE QFIIS 端點嘗試失敗 ({url[:50]}...): {e}")
 
         # --- B. 上櫃外資持股 (TPEx QFII) ---
         tpex_headers = {
@@ -685,57 +608,41 @@ class TaiwanStockDataFetcher:
             'Referer': 'https://www.tpex.org.tw/web/stock/3insti/qfii/qfii.php?l=zh-tw',
         }
 
-        tpex_date_succeeded = False
+        tpex_candidates = []
         for d in dates_to_try:
-            if not d: continue
             try:
                 year = int(d[:4]) - 1911
                 roc_date = f"{year}/{d[4:6]}/{d[6:8]}"
-                cands = [
-                    f'https://www.tpex.org.tw/web/stock/3insti/qfii/qfii_result.php?l=zh-tw&o=json&d={roc_date}',
-                    f'https://www.tpex.org.tw/web/stock/3insti/qfii/qfii_result.php?l=zh-tw&o=csv&d={roc_date}',
-                ]
+                tpex_candidates.append(f'https://www.tpex.org.tw/web/stock/3insti/qfii/qfii_result.php?l=zh-tw&o=json&d={roc_date}')
+                tpex_candidates.append(f'https://www.tpex.org.tw/web/stock/3insti/qfii/qfii_result.php?l=zh-tw&o=csv&d={roc_date}')
             except Exception:
-                cands = []
+                pass
 
-            for url in cands:
-                try:
-                    res = session.get(url, headers=tpex_headers, timeout=12)
-                    if res.status_code == 200:
-                        text = res.text.strip()
-                        parsed = self._parse_tpex_qfii(text, d)
-                        if parsed and len(parsed) > 0:
-                            foreign_holdings.update(parsed)
-                            logger.info(f"TPEx 外資持股成功取得 {len(parsed)} 檔 (基準日: {d})")
-                            tpex_date_succeeded = True
-                            break
-                except Exception as e:
-                    logger.debug(f"TPEx QFII 端點嘗試失敗: {e}")
-            if tpex_date_succeeded:
-                break
+        tpex_candidates.extend([
+            'https://www.tpex.org.tw/web/stock/3insti/qfii/qfii_result.php?l=zh-tw&o=json',
+            'https://www.tpex.org.tw/web/stock/3insti/qfii/qfii_result.php?l=zh-tw&o=csv',
+        ])
 
-        if not tpex_date_succeeded:
-            for url in [
-                'https://www.tpex.org.tw/web/stock/3insti/qfii/qfii_result.php?l=zh-tw&o=json',
-                'https://www.tpex.org.tw/web/stock/3insti/qfii/qfii_result.php?l=zh-tw&o=csv',
-            ]:
-                try:
-                    res = session.get(url, headers=tpex_headers, timeout=12)
-                    if res.status_code == 200:
-                        text = res.text.strip()
-                        parsed = self._parse_tpex_qfii(text, None)
-                        if parsed and len(parsed) > 0:
-                            foreign_holdings.update(parsed)
-                            break
-                except Exception:
-                    pass
+        for url in tpex_candidates:
+            if not url: continue
+            try:
+                res = session.get(url, headers=tpex_headers, timeout=12)
+                if res.status_code == 200:
+                    text = res.text.strip()
+                    parsed = self._parse_tpex_qfii(text)
+                    if parsed and len(parsed) > 0:
+                        foreign_holdings.update(parsed)
+                        logger.info(f"TPEx 外資持股成功取得 {len(parsed)} 檔")
+                        break
+            except Exception as e:
+                logger.debug(f"TPEx QFII 端點嘗試失敗: {e}")
 
         return foreign_holdings
 
     def get_institutional_data_for_date(self, query_date_str=None):
-        """從台灣證交所 (TWSE) 與櫃買中心 (TPEx) 取得三大法人買賣超與外資持股總數/持股比率"""
-        if not self.enable_institutional or self.twse_blocked:
-            return {}
+        """
+        從台灣證交所 (TWSE) 與櫃買中心 (TPEx) 取得三大法人買賣超與外資持股總數/持股比率
+        """
         import zoneinfo
         tz_taipei = zoneinfo.ZoneInfo("Asia/Taipei")
         now_tpe = datetime.now(tz_taipei)
@@ -850,41 +757,14 @@ class TaiwanStockDataFetcher:
         foreign_map = self._fetch_foreign_holding_matrix(session, headers, query_date_str, prev_date_str)
         if foreign_map:
             for sid, h_data in foreign_map.items():
-                h_date = h_data.get('date')
-                h_shares = h_data.get('shares')
-                h_pct = h_data.get('pct')
-                h_issued = h_data.get('issued')
-
                 if sid in inst_dict:
-                    f_buy = inst_dict[sid].get('Foreign_Buy', 0)
-
-                    # 🌟 核心突破：券商 APP 盤後即時加減推估邏輯 🌟
-                    # 每日 15:30 證交所僅公布三大法人買賣超 (T86)，而全體外資持股統計 (MI_QFIIS)
-                    # 常延遲至 20:00~21:30 始完成大結算更新。
-                    # 若當日官方 MI_QFIIS 尚未發布 (h_date < query_date_str)，
-                    # 自動比照永豐、三竹、富邦等券商 APP 邏輯：
-                    # 「今日持股 = 昨日官方持股存量 + 今日外資買賣超流量」
-                    # 同步精準推估最新持股率，徹底解決盤後 15:30~21:30 掃描結果與券商 APP 不一致的問題！
-                    if h_date and query_date_str and str(h_date) < str(query_date_str) and h_shares is not None:
-                        est_shares = h_shares + f_buy
-                        inst_dict[sid]['Foreign_Hold_Shares'] = est_shares
-                        if h_pct is not None and h_issued and h_issued > 0:
-                            delta_pct = (f_buy / h_issued) * 100
-                            inst_dict[sid]['Foreign_Hold_Pct'] = round(h_pct + delta_pct, 2)
-                        elif h_issued and h_issued > 0:
-                            inst_dict[sid]['Foreign_Hold_Pct'] = round((est_shares / h_issued) * 100, 2)
-                        elif h_pct is not None and h_shares > 0:
-                            inst_dict[sid]['Foreign_Hold_Pct'] = round(h_pct * (est_shares / h_shares), 2)
-                        else:
-                            inst_dict[sid]['Foreign_Hold_Pct'] = h_pct
-                    else:
-                        inst_dict[sid]['Foreign_Hold_Shares'] = h_shares
-                        inst_dict[sid]['Foreign_Hold_Pct'] = h_pct
+                    inst_dict[sid]['Foreign_Hold_Shares'] = h_data.get('shares')
+                    inst_dict[sid]['Foreign_Hold_Pct'] = h_data.get('pct')
                 else:
                     inst_dict[sid] = {
                         'Foreign_Buy': 0, 'Trust_Buy': 0, 'Dealer_Buy': 0,
-                        'Foreign_Hold_Shares': h_shares,
-                        'Foreign_Hold_Pct': h_pct,
+                        'Foreign_Hold_Shares': h_data.get('shares'),
+                        'Foreign_Hold_Pct': h_data.get('pct'),
                         'Trust_Hold_Shares': None
                     }
 
@@ -898,9 +778,6 @@ class TaiwanStockDataFetcher:
         若 API 無法連線或無資料，則檢查 df 內部是否有歷史 Trust_Buy 進行累加，
         若僅有當日資料則回傳當日買賣超作為基礎推估。
         """
-        if not self.enable_institutional or self.twse_blocked or self.finmind_blocked:
-            return None
-
         stock_clean = str(stock_id).split()[0].replace('.TW', '').replace('.TWO', '')
         if hasattr(self, 'trust_60d_cache') and stock_clean in self.trust_60d_cache:
             return self.trust_60d_cache[stock_clean]
@@ -939,11 +816,6 @@ class TaiwanStockDataFetcher:
                                 df.loc[dt, 'Trust_Buy'] = date_to_buy[dt_str]
         except Exception as e:
             logger.debug(f"FinMind 投信 60 日資料取得失敗 ({stock_clean}): {e}")
-            if 'timeout' in str(e).lower() or 'connect' in str(e).lower():
-                self.finmind_fail_count = getattr(self, 'finmind_fail_count', 0) + 1
-                if self.finmind_fail_count >= 3:
-                    logger.warning("⚡ FinMind API 連續 3 次連線逾時，已啟動全自動極速熔斷，略過後續個股之 FinMind 查詢！")
-                    self.finmind_blocked = True
 
         # 2. 備援：若 df 內已有超過 5 天的歷史 Trust_Buy 資料，直接做 rolling sum
         if accum_lots is None and df is not None and 'Trust_Buy' in df.columns:
